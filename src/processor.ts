@@ -5,12 +5,27 @@ import {
     EvmBlock,
 } from '@subsquid/evm-processor'
 import {lookupArchive} from '@subsquid/archive-registry'
-import {LogItem} from '@subsquid/evm-processor/lib/interfaces/dataSelection'
+import {LogItem, TransactionItem} from '@subsquid/evm-processor/lib/interfaces/dataSelection'
 import {Store, Database} from '@subsquid/file-store'
 import {S3Dest} from '@subsquid/file-store-s3'
 import {assertNotNull} from '@subsquid/util-internal'
+import {ethers} from 'ethers'
 
-import {Pools, Swaps} from './tables'
+import {
+    tables,
+    BaseTransactionData,
+    BaseEventData,
+    RouterRemoveLiquidityWithPermitTransactionData,
+    RouterAddLiquidityTransactionData,
+    StakingDepositEventData,
+    StakingWithdrawEventData,
+    StakingDepositTransactionData,
+    StakingWithdrawTransactionData,
+    CakePoolWithdrawEventData,
+    CakePoolHarvestEventData,
+    CakePoolWithdrawAllTransactionData,
+    CakePoolWithdrawByAmountTransactionData
+} from './tables'
 import * as routerAbi from './abi/router'
 import * as stakingAbi from './abi/staking'
 import * as cakePoolAbi from './abi/cakePool'
@@ -30,12 +45,16 @@ const FACTORY_ADDRESSES = new Set([
 
 const logData = {
     evmLog: {
+        address: true,
         topics: true,
         data: true
+    },
+    transaction: {
+        hash: true
     }
 } as const
 
-const txData = {
+const transactionData = {
     transaction: {
         from: true,
         to: true,
@@ -53,11 +72,11 @@ let processor = new EvmBatchProcessor()
     })
     .addTransaction([ROUTER_V2_ADDRESS], {
         sighash: routerAbi.functions.removeLiquidityWithPermit.sighash,
-        data: txData
+        data: transactionData
     })
     .addTransaction([ROUTER_V2_ADDRESS], {
         sighash: routerAbi.functions.addLiquidity.sighash,
-        data: txData
+        data: transactionData
     })
     .addLog([MAIN_STAKING_V2_ADDRESS], {
         filter: [[
@@ -68,11 +87,11 @@ let processor = new EvmBatchProcessor()
     })
     .addTransaction([MAIN_STAKING_V2_ADDRESS], {
         sighash: stakingAbi.functions.deposit.sighash,
-        data: txData
+        data: transactionData
     })
     .addTransaction([MAIN_STAKING_V2_ADDRESS], {
         sighash: stakingAbi.functions.withdraw.sighash,
-        data: txData
+        data: transactionData
     })
     .addLog([CAKE_POOL_ADDRESS], {
         filter: [[
@@ -83,13 +102,13 @@ let processor = new EvmBatchProcessor()
     })
     .addTransaction([CAKE_POOL_ADDRESS], {
         sighash: cakePoolAbi.functions.withdrawAll.sighash,
-        data: txData
+        data: transactionData
     })
     .addTransaction([CAKE_POOL_ADDRESS], {
         sighash: cakePoolAbi.functions.withdrawByAmount.sighash,
-        data: txData
+        data: transactionData
     })
-    .addLog([], {
+/*    .addLog([], {
         filter: [[
             erc20Abi.events.Transfer.topic
         ]],
@@ -99,8 +118,8 @@ let processor = new EvmBatchProcessor()
         filter: [[factoryAbi.events.PairCreated.topic]],
         data: logData
     })
+*/
 
-let tables = { Pools, Swaps }
 interface Metadata {
     height: number
     pools: string[]
@@ -122,7 +141,7 @@ let db = new Database({
         }
     ),*/
     chunkSizeMb: 20,
-    hooks: {
+/*    hooks: {
         async onConnect(dest) {
             if (await dest.exists('status.json')) {
                 let {height, pools}: Metadata = await dest.readFile('status.json').then(JSON.parse)
@@ -142,16 +161,78 @@ let db = new Database({
             }
             await dest.writeFile('status.json', JSON.stringify(metadata))
         },
-    },
+    },*/
 })
 
 type Item = BatchProcessorItem<typeof processor>
 type Ctx = BatchHandlerContext<Store<typeof tables>, Item>
+type DecodableLogItem = LogItem<typeof logData>
+type DecodableTransactionItem = TransactionItem<typeof transactionData>
 
 let usedContracts = new Map<string, number>()
 let unusedContracts = new Map<string, number>()
 
 processor.run(db, async (ctx) => {
+    for (let block of ctx.blocks) {
+        for (let item of block.items) {
+            if (item.kind==='transaction') {
+                if (item.transaction.to===ROUTER_V2_ADDRESS) {
+                    switch (getSighash(item)) {
+                        case routerAbi.functions.removeLiquidityWithPermit.sighash:
+                            ctx.store.router_removeLiquidityWithPermit.write(decodeRouterRemoveLiquidityWithPermitTransaction(block.header, item))
+                            break
+                        case routerAbi.functions.addLiquidity.sighash:
+                            ctx.store.router_addLiquidity.write(decodeRouterAddLiquidityTransaction(block.header, item))
+                            break
+                    }
+                }
+                if (item.transaction.to===MAIN_STAKING_V2_ADDRESS) {
+                    switch (getSighash(item)) {
+                        case stakingAbi.functions.deposit.sighash:
+                            ctx.store.staking_deposit.write(decodeStakingDepositTransaction(block.header, item))
+                            break
+                        case stakingAbi.functions.withdraw.sighash:
+                            ctx.store.staking_withdraw.write(decodeStakingWithdrawTransaction(block.header, item))
+                            break
+                    }
+                }
+                if (item.transaction.to===CAKE_POOL_ADDRESS) {
+                    switch (getSighash(item)) {
+                        case cakePoolAbi.functions.withdrawAll.sighash:
+                            ctx.store.cakePool_withdrawAll.write(decodeCakePoolWithdrawAllTransaction(block.header, item))
+                            break
+                        case cakePoolAbi.functions.withdrawByAmount.sighash:
+                            ctx.store.cakePool_withdrawByAmount.write(decodeCakePoolWithdrawByAmountTransaction(block.header, item))
+                            break
+                    }
+                }
+            }
+            if (item.kind==='evmLog') {
+                if (item.evmLog.address===MAIN_STAKING_V2_ADDRESS) {
+                    switch (item.evmLog.topics[0]) {
+                        case stakingAbi.events.Deposit.topic:
+                            ctx.store.staking_Deposit.write(decodeStakingDepositEvent(block.header, item))
+                            break
+                        case stakingAbi.events.Withdraw.topic:
+                            ctx.store.staking_Withdraw.write(decodeStakingWithdrawEvent(block.header, item))
+                            break
+                    }
+                }
+                if (item.evmLog.address===CAKE_POOL_ADDRESS) {
+                    switch (item.evmLog.topics[0]) {
+                        case cakePoolAbi.events.Withdraw.topic:
+                            ctx.store.cakePool_Withdraw.write(decodeCakePoolWithdrawEvent(block.header, item))
+                            break
+                        case cakePoolAbi.events.Harvest.topic:
+                            ctx.store.cakePool_Harvest.write(decodeCakePoolHarvestEvent(block.header, item))
+                            break
+                    }
+                }
+            }
+        }
+    }
+
+/*
     assert(factoryPools)
 
     let poolCreationsData: PoolCreationData[] = []
@@ -166,17 +247,30 @@ processor.run(db, async (ctx) => {
                 let pcd = handlePoolCreation(ctx, item)
                 factoryPools.add(pcd.address)
                 poolCreationsData.push(pcd)
+            } else if (factoryPools.has(itemAddr)) {
+                // do stuff with factory events
             }
-// else if (factoryPools.has(itemAddr)) {
-//                swapsData.push(handleSwap(ctx, block.header, item))
-//            }
         }
     }
+*/
 
-    ctx.store.Pools.writeMany(poolCreationsData)
-    ctx.store.Swaps.writeMany(swapsData)
+/*{
+    router_removeLiquidityWithPermit,
+    router_addLiquidity,
+    staking_Deposit,
+    staking_Withdraw,
+    staking_deposit,
+    staking_withdraw
+    cakePool_Harvest,
+    cakePool_Withdraw,
+    cakePool_withdrawAll,
+    cakePool_withdrawByAmount,
+}*/
+
+//    ctx.store.Pools.writeMany(poolCreationsData)
 })
 
+/*
 interface PoolCreationData {
     factory: string
     address: string
@@ -196,37 +290,151 @@ function handlePoolCreation(
         token1: event.token1.toLowerCase()
     }
 }
+*/
 
-interface SwapData {
-    txHash: string
-    blockNumber: bigint
-    timestamp: Date
-    pool: string
-    sender: string
-    amount0In: string
-    amount1In: string
-    amount0Out: string
-    amount1Out: string
-    to: string
+function getSighash(item: DecodableTransactionItem): string {
+    return item.transaction.input.slice(0, 10)
 }
-/*
-function handleSwap(
-    ctx: Ctx,
-    block: EvmBlock,
-    item: LogItem<{evmLog: {topics: true; data: true}; transaction: {hash: true}}>
-): SwapData {
-    let event = pairAbi.events.Swap.decode(item.evmLog)
+
+function decodeBlockHeader(header: EvmBlock) {
     return {
-        txHash: item.transaction.hash,
-        blockNumber: BigInt(block.height),
-        timestamp: new Date(block.timestamp),
-        pool: item.evmLog.address,
-        sender: event.sender.toLowerCase(),
-        amount0In: event.amount0In.toString(),
-        amount1In: event.amount1In.toString(),
-        amount0Out: event.amount0Out.toString(),
-        amount1Out: event.amount1Out.toString(),
-        to: event.to.toLowerCase()
+        block: header.height,
+        timestamp: new Date(header.timestamp)
     }
 }
-*/
+
+function decodeBaseTransactionData(header: EvmBlock, item: DecodableTransactionItem): BaseTransactionData {
+    return {
+        ...decodeBlockHeader(header),
+        hash: item.transaction.hash
+    }
+}
+
+function decodeBaseEventData(header: EvmBlock, item: DecodableLogItem): BaseEventData {
+    return {
+        ...decodeBlockHeader(header),
+        parentTransactionHash: item.transaction.hash
+    }
+}
+
+function normalizeAddress(addr: string) {
+    return addr.toLowerCase()
+}
+
+function normalizeAmount(amt: ethers.BigNumber) {
+    return amt.toBigInt()
+}
+
+function decodeRouterRemoveLiquidityWithPermitTransaction(header: EvmBlock, item: DecodableTransactionItem): RouterRemoveLiquidityWithPermitTransactionData {
+    let baseData = decodeBaseTransactionData(header, item)
+    let txn = routerAbi.functions.removeLiquidityWithPermit.decode(item.transaction.input)
+    return {
+        tokenA: normalizeAddress(txn.tokenA),
+        tokenB: normalizeAddress(txn.tokenB),
+        liquidity: normalizeAmount(txn.liquidity),
+        amountAMin: normalizeAmount(txn.amountAMin),
+        amountBMin: normalizeAmount(txn.amountBMin),
+        to: normalizeAddress(txn.to),
+        deadline: txn.deadline.toBigInt(),
+        approveMax: txn.approveMax,
+        v: txn.v,
+        r: txn.r,
+        s: txn.s,
+        ...baseData
+    }
+}
+
+function decodeRouterAddLiquidityTransaction(header: EvmBlock, item: DecodableTransactionItem): RouterAddLiquidityTransactionData {
+    let baseData = decodeBaseTransactionData(header, item)
+    let txn = routerAbi.functions.addLiquidity.decode(item.transaction.input)
+    return {
+        tokenA: normalizeAddress(txn.tokenA),
+        tokenB: normalizeAddress(txn.tokenB),
+        amountADesired: normalizeAmount(txn.amountADesired),
+        amountBDesired: normalizeAmount(txn.amountBDesired),
+        amountAMin: normalizeAmount(txn.amountAMin),
+        amountBMin: normalizeAmount(txn.amountBMin),
+        to: normalizeAddress(txn.to),
+        deadline: txn.deadline.toBigInt(),
+        ...baseData
+    }
+}
+
+function decodeStakingDepositEvent(header: EvmBlock, item: DecodableLogItem): StakingDepositEventData {
+    let baseData = decodeBaseEventData(header, item)
+    let log = stakingAbi.events.Deposit.decode(item.evmLog)
+    return {
+        user: normalizeAddress(log.user),
+        pid: log.pid.toBigInt(),
+        amount: normalizeAmount(log.amount),
+        ...baseData
+    }
+}
+
+function decodeStakingWithdrawEvent(header: EvmBlock, item: DecodableLogItem): StakingWithdrawEventData {
+    let baseData = decodeBaseEventData(header, item)
+    let log = stakingAbi.events.Withdraw.decode(item.evmLog)
+    return {
+        user: normalizeAddress(log.user),
+        pid: log.pid.toBigInt(),
+        amount: normalizeAmount(log.amount),
+        ...baseData
+    }
+}
+
+function decodeStakingDepositTransaction(header: EvmBlock, item: DecodableTransactionItem): StakingDepositTransactionData {
+    let baseData = decodeBaseTransactionData(header, item)
+    let txn = stakingAbi.functions.deposit.decode(item.transaction.input)
+    return {
+        pid: txn._pid.toBigInt(),
+        amount: normalizeAmount(txn._amount),
+        ...baseData
+    }
+}
+
+function decodeStakingWithdrawTransaction(header: EvmBlock, item: DecodableTransactionItem): StakingWithdrawTransactionData {
+    let baseData = decodeBaseTransactionData(header, item)
+    let txn = stakingAbi.functions.withdraw.decode(item.transaction.input)
+    return {
+        pid: txn._pid.toBigInt(),
+        amount: normalizeAmount(txn._amount),
+        ...baseData
+    }
+}
+
+function decodeCakePoolWithdrawEvent(header: EvmBlock, item: DecodableLogItem): CakePoolWithdrawEventData {
+    let baseData = decodeBaseEventData(header, item)
+    let log = cakePoolAbi.events.Withdraw.decode(item.evmLog)
+    return {
+        sender: normalizeAddress(log.sender),
+        amount: normalizeAmount(log.amount),
+        shares: normalizeAmount(log.shares),
+        ...baseData
+    }
+}
+
+function decodeCakePoolHarvestEvent(header: EvmBlock, item: DecodableLogItem): CakePoolHarvestEventData {
+    let baseData = decodeBaseEventData(header, item)
+    let log = cakePoolAbi.events.Harvest.decode(item.evmLog)
+    return {
+        sender: normalizeAddress(log.sender),
+        amount: normalizeAmount(log.amount),
+        ...baseData
+    }
+}
+
+function decodeCakePoolWithdrawAllTransaction(header: EvmBlock, item: DecodableTransactionItem): CakePoolWithdrawAllTransactionData {
+    let baseData = decodeBaseTransactionData(header, item)
+    return {
+        ...baseData
+    }
+}
+
+function decodeCakePoolWithdrawByAmountTransaction(header: EvmBlock, item: DecodableTransactionItem): CakePoolWithdrawByAmountTransactionData {
+    let baseData = decodeBaseTransactionData(header, item)
+    let txn = cakePoolAbi.functions.withdrawByAmount.decode(item.transaction.input)
+    return {
+        amount: normalizeAmount(txn._amount),
+        ...baseData
+    }
+}
