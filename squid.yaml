@@ -1,8 +1,8 @@
 manifestVersion: subsquid.io/v0.1
-name: pancakeswap-swaps
+name: pancakeswap-extra-swaps
 version: 1
 description: |-
-  An example of processing contracts created with factory
+  Deposits and withdrawals data of Pancakeswap
 build:
 
 deploy:
