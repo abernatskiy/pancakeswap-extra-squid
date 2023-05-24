@@ -4,8 +4,9 @@ import {
     Types
 } from '@subsquid/file-store-parquet'
 
+//export const routerMints = new Table(
 export const Pools = new Table(
-    'pools.parquet',
+    'router.Mint.parquet',
     {
         factory: Column(Types.String()),
         address: Column(Types.String()),

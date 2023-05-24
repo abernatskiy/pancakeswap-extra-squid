@@ -11,44 +11,94 @@ import {S3Dest} from '@subsquid/file-store-s3'
 import {assertNotNull} from '@subsquid/util-internal'
 
 import {Pools, Swaps} from './tables'
+import * as routerAbi from './abi/router'
+import * as stakingAbi from './abi/staking'
+import * as cakePoolAbi from './abi/cakePool'
 import * as factoryAbi from './abi/factory'
-import * as pairAbi from './abi/pair'
+import * as erc20Abi from './abi/erc20'
 import assert from 'assert'
 
+import {LocalDest} from '@subsquid/file-store'
+
+const ROUTER_V2_ADDRESS = '0x10ED43C718714eb63d5aA57B78B54704E256024E'.toLowerCase()
+const MAIN_STAKING_V2_ADDRESS = '0xa5f8C5Dbd5F286960b9d90548680aE5ebFf07652'.toLowerCase()
+const CAKE_POOL_ADDRESS = '0x45c54210128a065de780C4B0Df3d16664f7f859e'.toLowerCase()
 const FACTORY_ADDRESSES = new Set([
-	'0xBCfCcbde45cE874adCB698cC183deBcF17952812'.toLowerCase(),
-	'0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73'.toLowerCase() // v2
+  '0xBCfCcbde45cE874adCB698cC183deBcF17952812'.toLowerCase(),
+  '0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73'.toLowerCase() // v2
 ])
+
+const logData = {
+    evmLog: {
+        topics: true,
+        data: true
+    }
+} as const
+
+const txData = {
+    transaction: {
+        from: true,
+        to: true,
+        input: true,
+        hash: true
+    }
+} as const
 
 let processor = new EvmBatchProcessor()
     .setDataSource({
         archive: lookupArchive('binance')
     })
     .setBlockRange({
-        from: 586_851,
+        from: 25_500_000,
+    })
+    .addTransaction([ROUTER_V2_ADDRESS], {
+        sighash: routerAbi.functions.removeLiquidityWithPermit.sighash,
+        data: txData
+    })
+    .addTransaction([ROUTER_V2_ADDRESS], {
+        sighash: routerAbi.functions.addLiquidity.sighash,
+        data: txData
+    })
+    .addLog([MAIN_STAKING_V2_ADDRESS], {
+        filter: [[
+            stakingAbi.events.Deposit.topic,
+            stakingAbi.events.Withdraw.topic
+        ]],
+        data: logData
+    })
+    .addTransaction([MAIN_STAKING_V2_ADDRESS], {
+        sighash: stakingAbi.functions.deposit.sighash,
+        data: txData
+    })
+    .addTransaction([MAIN_STAKING_V2_ADDRESS], {
+        sighash: stakingAbi.functions.withdraw.sighash,
+        data: txData
+    })
+    .addLog([CAKE_POOL_ADDRESS], {
+        filter: [[
+            cakePoolAbi.events.Withdraw.topic,
+            cakePoolAbi.events.Harvest.topic
+        ]],
+        data: logData
+    })
+    .addTransaction([CAKE_POOL_ADDRESS], {
+        sighash: cakePoolAbi.functions.withdrawAll.sighash,
+        data: txData
+    })
+    .addTransaction([CAKE_POOL_ADDRESS], {
+        sighash: cakePoolAbi.functions.withdrawByAmount.sighash,
+        data: txData
+    })
+    .addLog([], {
+        filter: [[
+            erc20Abi.events.Transfer.topic
+        ]],
+        data: logData
     })
     .addLog([...FACTORY_ADDRESSES], {
         filter: [[factoryAbi.events.PairCreated.topic]],
-        data: {
-            evmLog: {
-                topics: true,
-                data: true,
-            },
-        } as const,
+        data: logData
     })
-    .addLog([], {
-        filter: [[pairAbi.events.Swap.topic]],
-        data: {
-            evmLog: {
-                topics: true,
-                data: true,
-            },
-            transaction: {
-                hash: true,
-            },
-        } as const,
-    })
-
 
 let tables = { Pools, Swaps }
 interface Metadata {
@@ -58,7 +108,8 @@ interface Metadata {
 let factoryPools: Set<string>
 let db = new Database({
     tables: tables,
-    dest: new S3Dest(
+    dest: new LocalDest('/mirrorstorage/tst'),
+/*new S3Dest(
         'pancakeswaps',
         assertNotNull(process.env.S3_BUCKET_NAME),
         {
@@ -69,7 +120,7 @@ let db = new Database({
                 secretAccessKey: assertNotNull(process.env.S3_SECRET_ACCESS_KEY)
             }
         }
-    ),
+    ),*/
     chunkSizeMb: 20,
     hooks: {
         async onConnect(dest) {
@@ -115,9 +166,10 @@ processor.run(db, async (ctx) => {
                 let pcd = handlePoolCreation(ctx, item)
                 factoryPools.add(pcd.address)
                 poolCreationsData.push(pcd)
-            } else if (factoryPools.has(itemAddr)) {
-                swapsData.push(handleSwap(ctx, block.header, item))
             }
+// else if (factoryPools.has(itemAddr)) {
+//                swapsData.push(handleSwap(ctx, block.header, item))
+//            }
         }
     }
 
@@ -157,7 +209,7 @@ interface SwapData {
     amount1Out: string
     to: string
 }
-
+/*
 function handleSwap(
     ctx: Ctx,
     block: EvmBlock,
@@ -177,3 +229,4 @@ function handleSwap(
         to: event.to.toLowerCase()
     }
 }
+*/
