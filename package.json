@@ -1,0 +1,23 @@
+{
+  "name": "squid",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "rm -rf lib && tsc",
+    "update": "npx npm-check-updates --filter /subsquid/ --upgrade && npm i -f"
+  },
+  "dependencies": {
+    "@subsquid/archive-registry": "^2.1.8",
+    "@subsquid/evm-processor": "^0.3.3",
+    "@subsquid/evm-typegen": "^2.1.1",
+    "@subsquid/file-store-parquet": "^0.3.0",
+    "@subsquid/file-store-s3": "^0.2.0",
+    "dotenv": "^16.0.3",
+    "ethers": "^5.7.2"
+  },
+  "devDependencies": {
+    "@subsquid/evm-typegen": "^2.1.1",
+    "@types/node": "^18.11.18",
+    "typescript": "^4.9.4"
+  }
+}
