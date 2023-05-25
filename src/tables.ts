@@ -51,7 +51,7 @@ export interface RouterRemoveLiquidityWithPermitTransactionData extends BaseTran
     amountAMin: AmountType
     amountBMin: AmountType
     to: string
-    deadline: Date
+    deadline: string
     approveMax: boolean
     v: number
     r: string
@@ -67,7 +67,7 @@ const router_removeLiquidityWithPermit = new Table(
         amountAMin: amountColumn(),
         amountBMin: amountColumn(),
         to: Column(Types.String()),
-        deadline: Column(Types.Timestamp()),
+        deadline: Column(Types.String()),
         approveMax: Column(Types.Boolean()),
         v: Column(Types.Uint32()),
         r: Column(Types.String()),
@@ -87,11 +87,11 @@ export interface RouterAddLiquidityTransactionData extends BaseTransactionData {
     amountAMin: AmountType
     amountBMin: AmountType
     to: string
-    deadline: Date
+    deadline: string
 }
 
 const router_addLiquidity = new Table(
-    'router.removeLiquidityWithPermit.parquet',
+    'router.addLiquidity.parquet',
     {
         tokenA: Column(Types.String()),
         tokenB: Column(Types.String()),
@@ -100,7 +100,7 @@ const router_addLiquidity = new Table(
         amountAMin: amountColumn(),
         amountBMin: amountColumn(),
         to: Column(Types.String()),
-        deadline: Column(Types.Timestamp()),
+        deadline: Column(Types.String()),
         ...commonTransactionFields()
     },
     {

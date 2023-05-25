@@ -389,7 +389,7 @@ function decodeRouterRemoveLiquidityWithPermitTransaction(header: EvmBlock, item
         amountAMin: normalizeAmount(txn.amountAMin),
         amountBMin: normalizeAmount(txn.amountBMin),
         to: normalizeAddress(txn.to),
-        deadline: new Date(txn.deadline.toNumber()),
+        deadline: txn.deadline.toString(),
         approveMax: txn.approveMax,
         v: txn.v,
         r: txn.r,
@@ -409,7 +409,7 @@ function decodeRouterAddLiquidityTransaction(header: EvmBlock, item: DecodableTr
         amountAMin: normalizeAmount(txn.amountAMin),
         amountBMin: normalizeAmount(txn.amountBMin),
         to: normalizeAddress(txn.to),
-        deadline: new Date(txn.deadline.toNumber()),
+        deadline: txn.deadline.toString(),
         ...baseData
     }
 }
