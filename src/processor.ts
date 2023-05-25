@@ -127,9 +127,8 @@ interface Metadata {
 let factoryPools: Set<string>
 let db = new Database({
     tables: tables,
-    dest: new LocalDest('/mirrorstorage/tst'),
-/*new S3Dest(
-        'pancakeswaps',
+    dest: new S3Dest(
+        'pancake-deposits-and-withdrawals-light',
         assertNotNull(process.env.S3_BUCKET_NAME),
         {
             region: 'us-east-1',
@@ -139,7 +138,7 @@ let db = new Database({
                 secretAccessKey: assertNotNull(process.env.S3_SECRET_ACCESS_KEY)
             }
         }
-    ),*/
+    ),
     chunkSizeMb: 20,
 /*    hooks: {
         async onConnect(dest) {
