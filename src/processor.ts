@@ -321,6 +321,7 @@ function decodeEventSafely<T>(ctx: Ctx, header: EvmBlock, item: DecodableLogItem
         ctx.log.error({error, blockNumber: header.height, blockHash: header.hash, address: item.evmLog.address}, `Unable to decode event at ${decoder.name}`)
         ctx.log.error(`Offending item:`)
         ctx.log.error(item)
+        process.exit()
     }
     return out
 }
@@ -334,6 +335,10 @@ function decodeTransactionSafely<T>(ctx: Ctx, header: EvmBlock, item: DecodableT
         ctx.log.error({error, blockNumber: header.height, blockHash: header.hash, address: item.transaction.to}, `Unable to decode function at ${decoder.name}`)
         ctx.log.error(`Offending item:`)
         ctx.log.error(item)
+        ctx.store.unparseableTransactions.write({
+            input: item.transaction.input,
+            ...decodeBaseTransactionData(header, item)
+        })
     }
     return out
 }
@@ -352,13 +357,16 @@ function decodeBlockHeader(header: EvmBlock) {
 function decodeBaseTransactionData(header: EvmBlock, item: DecodableTransactionItem): BaseTransactionData {
     return {
         ...decodeBlockHeader(header),
-        hash: item.transaction.hash
+        hash: item.transaction.hash,
+        txFrom: normalizeAddress(item.transaction.from!),
+        txTo: normalizeAddress(item.transaction.to!)
     }
 }
 
 function decodeBaseEventData(header: EvmBlock, item: DecodableLogItem): BaseEventData {
     return {
         ...decodeBlockHeader(header),
+        eventAddress: normalizeAddress(item.evmLog.address),
         parentTransactionHash: item.transaction.hash
     }
 }

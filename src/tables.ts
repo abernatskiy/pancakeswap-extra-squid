@@ -16,7 +16,9 @@ function commonTransactionFields() {
     return {
         block: Column(Types.Uint32()),
         timestamp: Column(Types.Timestamp()),
-        hash: Column(Types.String())
+        hash: Column(Types.String()),
+        txFrom: Column(Types.String()),
+        txTo: Column(Types.String())
     }
 }
 
@@ -24,12 +26,15 @@ export interface BaseTransactionData {
     block: number
     timestamp: Date
     hash: string
+    txFrom: string
+    txTo: string
 }
 
 function commonEventFields() {
     return {
         block: Column(Types.Uint32()),
         timestamp: Column(Types.Timestamp()),
+        eventAddress: Column(Types.String()),
         parentTransactionHash: Column(Types.String())
     }
 }
@@ -37,6 +42,7 @@ function commonEventFields() {
 export interface BaseEventData {
     block: number
     timestamp: Date
+    eventAddress: string
     parentTransactionHash: string
 }
 
@@ -239,6 +245,17 @@ const cakePool_withdrawByAmount = new Table(
     }
 )
 
+const unparseableTransactions = new Table(
+    'unparseableTransactions.parquet',
+    {
+        input: Column(Types.String()),
+        ...commonTransactionFields()
+    },
+    {
+        compression: 'GZIP'
+    }
+)
+
 export const tables = {
     cakePool_Harvest,
     cakePool_Withdraw,
@@ -249,5 +266,6 @@ export const tables = {
     staking_Deposit,
     staking_Withdraw,
     staking_deposit,
-    staking_withdraw
+    staking_withdraw,
+    unparseableTransactions
 }
