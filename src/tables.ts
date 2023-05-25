@@ -47,7 +47,7 @@ export interface RouterRemoveLiquidityWithPermitTransactionData extends BaseTran
     amountAMin: AmountType
     amountBMin: AmountType
     to: string
-    deadline: bigint // TODO: change if it's a date
+    deadline: Date
     approveMax: boolean
     v: number
     r: string
@@ -63,7 +63,7 @@ const router_removeLiquidityWithPermit = new Table(
         amountAMin: amountColumn(),
         amountBMin: amountColumn(),
         to: Column(Types.String()),
-        deadline: Column(Types.Decimal(DECIMALS_PRECISION)), // TODO: is it a date?
+        deadline: Column(Types.Timestamp()),
         approveMax: Column(Types.Boolean()),
         v: Column(Types.Uint32()),
         r: Column(Types.String()),
@@ -83,7 +83,7 @@ export interface RouterAddLiquidityTransactionData extends BaseTransactionData {
     amountAMin: AmountType
     amountBMin: AmountType
     to: string
-    deadline: bigint // TODO: change if it's a date
+    deadline: Date
 }
 
 const router_addLiquidity = new Table(
@@ -96,7 +96,7 @@ const router_addLiquidity = new Table(
         amountAMin: amountColumn(),
         amountBMin: amountColumn(),
         to: Column(Types.String()),
-        deadline: Column(Types.Decimal(DECIMALS_PRECISION)), // TODO: is it a date?
+        deadline: Column(Types.Timestamp()),
         ...commonTransactionFields()
     },
     {
@@ -106,7 +106,7 @@ const router_addLiquidity = new Table(
 
 export interface StakingDepositEventData extends BaseEventData {
     user: string
-    pid: bigint
+    pid: number
     amount: AmountType
 }
 
@@ -114,7 +114,7 @@ const staking_Deposit = new Table(
     'staking.Deposit.parquet',
     {
         user: Column(Types.String()),
-        pid: Column(Types.Decimal(DECIMALS_PRECISION)), // TODO: too wide maybe?
+        pid: Column(Types.Uint32()),
         amount: amountColumn(),
         ...commonEventFields()
     },
@@ -125,7 +125,7 @@ const staking_Deposit = new Table(
 
 export interface StakingWithdrawEventData extends BaseEventData {
     user: string
-    pid: bigint
+    pid: number
     amount: AmountType
 }
 
@@ -133,7 +133,7 @@ const staking_Withdraw = new Table(
     'staking.Withdraw.parquet',
     {
         user: Column(Types.String()),
-        pid: Column(Types.Decimal(DECIMALS_PRECISION)), // TODO: too wide maybe?
+        pid: Column(Types.Uint32()),
         amount: amountColumn(),
         ...commonEventFields()
     },
@@ -143,14 +143,14 @@ const staking_Withdraw = new Table(
 )
 
 export interface StakingDepositTransactionData extends BaseTransactionData {
-    pid: bigint
+    pid: number
     amount: AmountType
 }
 
 const staking_deposit = new Table(
     'staking.deposit.parquet',
     {
-        pid: Column(Types.Decimal(DECIMALS_PRECISION)), // TODO: too wide maybe?
+        pid: Column(Types.Uint32()),
         amount: amountColumn(),
         ...commonTransactionFields()
     },
@@ -160,14 +160,14 @@ const staking_deposit = new Table(
 )
 
 export interface StakingWithdrawTransactionData extends BaseTransactionData {
-    pid: bigint
+    pid: number
     amount: AmountType
 }
 
 const staking_withdraw = new Table(
     'staking.withdraw.parquet',
     {
-        pid: Column(Types.Decimal(DECIMALS_PRECISION)), // TODO: too wide maybe?
+        pid: Column(Types.Uint32()),
         amount: amountColumn(),
         ...commonTransactionFields()
     },

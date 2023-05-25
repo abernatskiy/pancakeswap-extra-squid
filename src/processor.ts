@@ -381,7 +381,7 @@ function decodeRouterRemoveLiquidityWithPermitTransaction(header: EvmBlock, item
         amountAMin: normalizeAmount(txn.amountAMin),
         amountBMin: normalizeAmount(txn.amountBMin),
         to: normalizeAddress(txn.to),
-        deadline: txn.deadline.toBigInt(),
+        deadline: new Date(txn.deadline.toNumber()),
         approveMax: txn.approveMax,
         v: txn.v,
         r: txn.r,
@@ -401,7 +401,7 @@ function decodeRouterAddLiquidityTransaction(header: EvmBlock, item: DecodableTr
         amountAMin: normalizeAmount(txn.amountAMin),
         amountBMin: normalizeAmount(txn.amountBMin),
         to: normalizeAddress(txn.to),
-        deadline: txn.deadline.toBigInt(),
+        deadline: new Date(txn.deadline.toNumber()),
         ...baseData
     }
 }
@@ -411,7 +411,7 @@ function decodeStakingDepositEvent(header: EvmBlock, item: DecodableLogItem): St
     let log = stakingAbi.events.Deposit.decode(item.evmLog)
     return {
         user: normalizeAddress(log.user),
-        pid: log.pid.toBigInt(),
+        pid: log.pid.toNumber(),
         amount: normalizeAmount(log.amount),
         ...baseData
     }
@@ -422,7 +422,7 @@ function decodeStakingWithdrawEvent(header: EvmBlock, item: DecodableLogItem): S
     let log = stakingAbi.events.Withdraw.decode(item.evmLog)
     return {
         user: normalizeAddress(log.user),
-        pid: log.pid.toBigInt(),
+        pid: log.pid.toNumber(),
         amount: normalizeAmount(log.amount),
         ...baseData
     }
@@ -432,7 +432,7 @@ function decodeStakingDepositTransaction(header: EvmBlock, item: DecodableTransa
     let baseData = decodeBaseTransactionData(header, item)
     let txn = stakingAbi.functions.deposit.decode(item.transaction.input)
     return {
-        pid: txn._pid.toBigInt(),
+        pid: txn._pid.toNumber(),
         amount: normalizeAmount(txn._amount),
         ...baseData
     }
@@ -442,7 +442,7 @@ function decodeStakingWithdrawTransaction(header: EvmBlock, item: DecodableTrans
     let baseData = decodeBaseTransactionData(header, item)
     let txn = stakingAbi.functions.withdraw.decode(item.transaction.input)
     return {
-        pid: txn._pid.toBigInt(),
+        pid: txn._pid.toNumber(),
         amount: normalizeAmount(txn._amount),
         ...baseData
     }
