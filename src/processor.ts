@@ -178,54 +178,74 @@ processor.run(db, async (ctx) => {
             if (item.kind==='transaction') {
                 if (item.transaction.to===ROUTER_V2_ADDRESS) {
                     switch (getSighash(item)) {
-                        case routerAbi.functions.removeLiquidityWithPermit.sighash:
-                            ctx.store.router_removeLiquidityWithPermit.write(decodeRouterRemoveLiquidityWithPermitTransaction(block.header, item))
+                        case routerAbi.functions.removeLiquidityWithPermit.sighash: {
+                            let txn = decodeTransactionSafely(ctx, block.header, item, decodeRouterRemoveLiquidityWithPermitTransaction)
+                            if (txn) { ctx.store.router_removeLiquidityWithPermit.write(txn) }
                             break
-                        case routerAbi.functions.addLiquidity.sighash:
-                            ctx.store.router_addLiquidity.write(decodeRouterAddLiquidityTransaction(block.header, item))
+                        }
+                        case routerAbi.functions.addLiquidity.sighash: {
+                            let txn = decodeTransactionSafely(ctx, block.header, item, decodeRouterAddLiquidityTransaction)
+                            if (txn) { ctx.store.router_addLiquidity.write(txn) }
                             break
+                        }
                     }
                 }
                 if (item.transaction.to===MAIN_STAKING_V2_ADDRESS) {
                     switch (getSighash(item)) {
-                        case stakingAbi.functions.deposit.sighash:
-                            ctx.store.staking_deposit.write(decodeStakingDepositTransaction(block.header, item))
+                        case stakingAbi.functions.deposit.sighash: {
+                            let txn = decodeTransactionSafely(ctx, block.header, item, decodeStakingDepositTransaction)
+                            if (txn) { ctx.store.staking_deposit.write(txn) }
                             break
-                        case stakingAbi.functions.withdraw.sighash:
-                            ctx.store.staking_withdraw.write(decodeStakingWithdrawTransaction(block.header, item))
+                        }
+                        case stakingAbi.functions.withdraw.sighash: {
+                            let txn = decodeTransactionSafely(ctx, block.header, item, decodeStakingWithdrawTransaction)
+                            if (txn) { ctx.store.staking_withdraw.write(txn) }
                             break
+                        }
                     }
                 }
                 if (item.transaction.to===CAKE_POOL_ADDRESS) {
                     switch (getSighash(item)) {
-                        case cakePoolAbi.functions.withdrawAll.sighash:
-                            ctx.store.cakePool_withdrawAll.write(decodeCakePoolWithdrawAllTransaction(block.header, item))
+                        case cakePoolAbi.functions.withdrawAll.sighash: {
+                            let txn = decodeTransactionSafely(ctx, block.header, item, decodeCakePoolWithdrawAllTransaction)
+                            if (txn) { ctx.store.cakePool_withdrawAll.write(txn) }
                             break
-                        case cakePoolAbi.functions.withdrawByAmount.sighash:
-                            ctx.store.cakePool_withdrawByAmount.write(decodeCakePoolWithdrawByAmountTransaction(block.header, item))
+                        }
+                        case cakePoolAbi.functions.withdrawByAmount.sighash: {
+                            let txn = decodeTransactionSafely(ctx, block.header, item, decodeCakePoolWithdrawByAmountTransaction)
+                            if (txn) { ctx.store.cakePool_withdrawByAmount.write(txn) }
                             break
+                        }
                     }
                 }
             }
             if (item.kind==='evmLog') {
                 if (item.evmLog.address===MAIN_STAKING_V2_ADDRESS) {
                     switch (item.evmLog.topics[0]) {
-                        case stakingAbi.events.Deposit.topic:
-                            ctx.store.staking_Deposit.write(decodeStakingDepositEvent(block.header, item))
+                        case stakingAbi.events.Deposit.topic: {
+                            let event = decodeEventSafely(ctx, block.header, item, decodeStakingDepositEvent)
+                            if (event) { ctx.store.staking_Deposit.write(event) }
                             break
-                        case stakingAbi.events.Withdraw.topic:
-                            ctx.store.staking_Withdraw.write(decodeStakingWithdrawEvent(block.header, item))
+                        }
+                        case stakingAbi.events.Withdraw.topic: {
+                            let event = decodeEventSafely(ctx, block.header, item, decodeStakingWithdrawEvent)
+                            if (event) { ctx.store.staking_Withdraw.write(event) }
                             break
+                        }
                     }
                 }
                 if (item.evmLog.address===CAKE_POOL_ADDRESS) {
                     switch (item.evmLog.topics[0]) {
-                        case cakePoolAbi.events.Withdraw.topic:
-                            ctx.store.cakePool_Withdraw.write(decodeCakePoolWithdrawEvent(block.header, item))
+                        case cakePoolAbi.events.Withdraw.topic: {
+                            let event = decodeEventSafely(ctx, block.header, item, decodeCakePoolWithdrawEvent)
+                            if (event) { ctx.store.cakePool_Withdraw.write(event) }
                             break
-                        case cakePoolAbi.events.Harvest.topic:
-                            ctx.store.cakePool_Harvest.write(decodeCakePoolHarvestEvent(block.header, item))
+                        }
+                        case cakePoolAbi.events.Harvest.topic: {
+                            let event = decodeEventSafely(ctx, block.header, item, decodeCakePoolHarvestEvent)
+                            if (event) { ctx.store.cakePool_Harvest.write(event) }
                             break
+                        }
                     }
                 }
             }
@@ -291,6 +311,32 @@ function handlePoolCreation(
     }
 }
 */
+
+function decodeEventSafely<T>(ctx: Ctx, header: EvmBlock, item: DecodableLogItem, decoder: (header: EvmBlock, item: DecodableLogItem) => T): T | undefined {
+    let out: T | undefined
+    try {
+        out = decoder(header, item)
+    }
+    catch (error) {
+        ctx.log.error({error, blockNumber: header.height, blockHash: header.hash, address: item.evmLog.address}, `Unable to decode event at ${decoder.name}`)
+        ctx.log.error(`Offending item:`)
+        ctx.log.error(item)
+    }
+    return out
+}
+
+function decodeTransactionSafely<T>(ctx: Ctx, header: EvmBlock, item: DecodableTransactionItem, decoder: (header: EvmBlock, item: DecodableTransactionItem) => T): T | undefined {
+    let out: T | undefined
+    try {
+        out = decoder(header, item)
+    }
+    catch (error) {
+        ctx.log.error({error, blockNumber: header.height, blockHash: header.hash, address: item.transaction.to}, `Unable to decode function at ${decoder.name}`)
+        ctx.log.error(`Offending item:`)
+        ctx.log.error(item)
+    }
+    return out
+}
 
 function getSighash(item: DecodableTransactionItem): string {
     return item.transaction.input.slice(0, 10)
