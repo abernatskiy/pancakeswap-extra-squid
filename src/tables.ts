@@ -4,8 +4,6 @@ import {
     Types
 } from '@subsquid/file-store-parquet'
 
-const DECIMALS_PRECISION = 76
-
 type AmountType = string
 
 function amountColumn() {
