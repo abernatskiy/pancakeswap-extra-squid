@@ -368,7 +368,7 @@ function normalizeAddress(addr: string) {
 }
 
 function normalizeAmount(amt: ethers.BigNumber) {
-    return amt.toBigInt()
+    return amt.toString()
 }
 
 function decodeRouterRemoveLiquidityWithPermitTransaction(header: EvmBlock, item: DecodableTransactionItem): RouterRemoveLiquidityWithPermitTransactionData {

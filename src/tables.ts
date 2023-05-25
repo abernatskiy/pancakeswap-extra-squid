@@ -4,7 +4,13 @@ import {
     Types
 } from '@subsquid/file-store-parquet'
 
-const DECIMALS_PRECISION = 38
+const DECIMALS_PRECISION = 76
+
+type AmountType = string
+
+function amountColumn() {
+    return Column(Types.String())
+}
 
 function commonTransactionFields() {
     return {
@@ -37,9 +43,9 @@ export interface BaseEventData {
 export interface RouterRemoveLiquidityWithPermitTransactionData extends BaseTransactionData {
     tokenA: string
     tokenB: string
-    liquidity: bigint
-    amountAMin: bigint
-    amountBMin: bigint
+    liquidity: AmountType
+    amountAMin: AmountType
+    amountBMin: AmountType
     to: string
     deadline: bigint // TODO: change if it's a date
     approveMax: boolean
@@ -53,9 +59,9 @@ const router_removeLiquidityWithPermit = new Table(
     {
         tokenA: Column(Types.String()),
         tokenB: Column(Types.String()),
-        liquidity: Column(Types.Decimal(DECIMALS_PRECISION)),
-        amountAMin: Column(Types.Decimal(DECIMALS_PRECISION)),
-        amountBMin: Column(Types.Decimal(DECIMALS_PRECISION)),
+        liquidity: amountColumn(),
+        amountAMin: amountColumn(),
+        amountBMin: amountColumn(),
         to: Column(Types.String()),
         deadline: Column(Types.Decimal(DECIMALS_PRECISION)), // TODO: is it a date?
         approveMax: Column(Types.Boolean()),
@@ -72,10 +78,10 @@ const router_removeLiquidityWithPermit = new Table(
 export interface RouterAddLiquidityTransactionData extends BaseTransactionData {
     tokenA: string
     tokenB: string
-    amountADesired: bigint
-    amountBDesired: bigint
-    amountAMin: bigint
-    amountBMin: bigint
+    amountADesired: AmountType
+    amountBDesired: AmountType
+    amountAMin: AmountType
+    amountBMin: AmountType
     to: string
     deadline: bigint // TODO: change if it's a date
 }
@@ -85,10 +91,10 @@ const router_addLiquidity = new Table(
     {
         tokenA: Column(Types.String()),
         tokenB: Column(Types.String()),
-        amountADesired: Column(Types.Decimal(DECIMALS_PRECISION)),
-        amountBDesired: Column(Types.Decimal(DECIMALS_PRECISION)),
-        amountAMin: Column(Types.Decimal(DECIMALS_PRECISION)),
-        amountBMin: Column(Types.Decimal(DECIMALS_PRECISION)),
+        amountADesired: amountColumn(),
+        amountBDesired: amountColumn(),
+        amountAMin: amountColumn(),
+        amountBMin: amountColumn(),
         to: Column(Types.String()),
         deadline: Column(Types.Decimal(DECIMALS_PRECISION)), // TODO: is it a date?
         ...commonTransactionFields()
@@ -101,7 +107,7 @@ const router_addLiquidity = new Table(
 export interface StakingDepositEventData extends BaseEventData {
     user: string
     pid: bigint
-    amount: bigint
+    amount: AmountType
 }
 
 const staking_Deposit = new Table(
@@ -109,7 +115,7 @@ const staking_Deposit = new Table(
     {
         user: Column(Types.String()),
         pid: Column(Types.Decimal(DECIMALS_PRECISION)), // TODO: too wide maybe?
-        amount: Column(Types.Decimal(DECIMALS_PRECISION)),
+        amount: amountColumn(),
         ...commonEventFields()
     },
     {
@@ -120,7 +126,7 @@ const staking_Deposit = new Table(
 export interface StakingWithdrawEventData extends BaseEventData {
     user: string
     pid: bigint
-    amount: bigint
+    amount: AmountType
 }
 
 const staking_Withdraw = new Table(
@@ -128,7 +134,7 @@ const staking_Withdraw = new Table(
     {
         user: Column(Types.String()),
         pid: Column(Types.Decimal(DECIMALS_PRECISION)), // TODO: too wide maybe?
-        amount: Column(Types.Decimal(DECIMALS_PRECISION)),
+        amount: amountColumn(),
         ...commonEventFields()
     },
     {
@@ -138,14 +144,14 @@ const staking_Withdraw = new Table(
 
 export interface StakingDepositTransactionData extends BaseTransactionData {
     pid: bigint
-    amount: bigint
+    amount: AmountType
 }
 
 const staking_deposit = new Table(
     'staking.deposit.parquet',
     {
         pid: Column(Types.Decimal(DECIMALS_PRECISION)), // TODO: too wide maybe?
-        amount: Column(Types.Decimal(DECIMALS_PRECISION)),
+        amount: amountColumn(),
         ...commonTransactionFields()
     },
     {
@@ -155,14 +161,14 @@ const staking_deposit = new Table(
 
 export interface StakingWithdrawTransactionData extends BaseTransactionData {
     pid: bigint
-    amount: bigint
+    amount: AmountType
 }
 
 const staking_withdraw = new Table(
     'staking.withdraw.parquet',
     {
         pid: Column(Types.Decimal(DECIMALS_PRECISION)), // TODO: too wide maybe?
-        amount: Column(Types.Decimal(DECIMALS_PRECISION)),
+        amount: amountColumn(),
         ...commonTransactionFields()
     },
     {
@@ -172,16 +178,16 @@ const staking_withdraw = new Table(
 
 export interface CakePoolWithdrawEventData extends BaseEventData {
     sender: string
-    amount: bigint
-    shares: bigint
+    amount: AmountType
+    shares: AmountType
 }
 
 const cakePool_Withdraw = new Table(
     'cakePool.Withdraw.parquet',
     {
         sender: Column(Types.String()),
-        amount: Column(Types.Decimal(DECIMALS_PRECISION)),
-        shares: Column(Types.Decimal(DECIMALS_PRECISION)),
+        amount: amountColumn(),
+        shares: amountColumn(),
         ...commonEventFields()
     },
     {
@@ -191,14 +197,14 @@ const cakePool_Withdraw = new Table(
 
 export interface CakePoolHarvestEventData extends BaseEventData {
     sender: string
-    amount: bigint
+    amount: AmountType
 }
 
 const cakePool_Harvest = new Table(
     'cakePool.Harvest.parquet',
     {
         sender: Column(Types.String()),
-        amount: Column(Types.Decimal(DECIMALS_PRECISION)),
+        amount: amountColumn(),
         ...commonEventFields()
     },
     {
@@ -219,13 +225,13 @@ const cakePool_withdrawAll = new Table(
 )
 
 export interface CakePoolWithdrawByAmountTransactionData extends BaseTransactionData {
-    amount: bigint
+    amount: AmountType
 }
 
 const cakePool_withdrawByAmount = new Table(
     'cakePool.withdrawByAmount.parquet',
     {
-        amount: Column(Types.Decimal(DECIMALS_PRECISION)),
+        amount: amountColumn(),
         ...commonTransactionFields()
     },
     {
