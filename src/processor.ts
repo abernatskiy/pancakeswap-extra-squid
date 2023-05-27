@@ -1,11 +1,12 @@
 import {
-    BatchHandlerContext,
-    BatchProcessorItem,
+    DataHandlerContext,
     EvmBatchProcessor,
-    EvmBlock,
+    BlockData,
+    Log,
+    Transaction
 } from '@subsquid/evm-processor'
 import {lookupArchive} from '@subsquid/archive-registry'
-import {LogItem, TransactionItem} from '@subsquid/evm-processor/lib/interfaces/dataSelection'
+//import {LogItem, TransactionItem} from '@subsquid/evm-processor/lib/interfaces/dataSelection'
 import {Store, Database} from '@subsquid/file-store'
 import {S3Dest} from '@subsquid/file-store-s3'
 import {assertNotNull} from '@subsquid/util-internal'
@@ -29,7 +30,6 @@ import {
 import * as routerAbi from './abi/router'
 import * as stakingAbi from './abi/staking'
 import * as cakePoolAbi from './abi/cakePool'
-import * as factoryAbi from './abi/factory'
 import * as erc20Abi from './abi/erc20'
 import assert from 'assert'
 
@@ -38,96 +38,68 @@ import {LocalDest} from '@subsquid/file-store'
 const ROUTER_V2_ADDRESS = '0x10ED43C718714eb63d5aA57B78B54704E256024E'.toLowerCase()
 const MAIN_STAKING_V2_ADDRESS = '0xa5f8C5Dbd5F286960b9d90548680aE5ebFf07652'.toLowerCase()
 const CAKE_POOL_ADDRESS = '0x45c54210128a065de780C4B0Df3d16664f7f859e'.toLowerCase()
-const FACTORY_ADDRESSES = new Set([
-  '0xBCfCcbde45cE874adCB698cC183deBcF17952812'.toLowerCase(),
-  '0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73'.toLowerCase() // v2
-])
 
-const logData = {
-    evmLog: {
-        address: true,
-        topics: true,
-        data: true
+let fieldSelection = {
+    log: {
+        transactionHash: true
     },
     transaction: {
-        hash: true
-    }
-} as const
-
-const transactionData = {
-    transaction: {
-        from: true,
-        to: true,
         input: true,
-        hash: true
+        sighash: true
     }
 } as const
 
 let processor = new EvmBatchProcessor()
+    .setFields(fieldSelection)
     .setDataSource({
         archive: lookupArchive('binance')
     })
     .setBlockRange({
         from: 25_500_000,
     })
-    .addTransaction([ROUTER_V2_ADDRESS], {
-        sighash: routerAbi.functions.removeLiquidityWithPermit.sighash,
-        data: transactionData
+    .addTransaction({
+        to: [ROUTER_V2_ADDRESS],
+        sighash: [
+            routerAbi.functions.removeLiquidityWithPermit.sighash,
+            routerAbi.functions.addLiquidity.sighash
+        ],
+        logs: true
     })
-    .addTransaction([ROUTER_V2_ADDRESS], {
-        sighash: routerAbi.functions.addLiquidity.sighash,
-        data: transactionData
-    })
-    .addLog([MAIN_STAKING_V2_ADDRESS], {
-        filter: [[
+/*    .addLog({ // I don't think I need this with logs: true in addTransaction below
+        address: [MAIN_STAKING_V2_ADDRESS],
+        topic0: [
             stakingAbi.events.Deposit.topic,
             stakingAbi.events.Withdraw.topic
-        ]],
-        data: logData
+        ]
+    })*/
+    .addTransaction({
+        to: [MAIN_STAKING_V2_ADDRESS],
+        sighash: [
+            stakingAbi.functions.deposit.sighash,
+            stakingAbi.functions.withdraw.sighash
+        ],
+        logs: true
     })
-    .addTransaction([MAIN_STAKING_V2_ADDRESS], {
-        sighash: stakingAbi.functions.deposit.sighash,
-        data: transactionData
-    })
-    .addTransaction([MAIN_STAKING_V2_ADDRESS], {
-        sighash: stakingAbi.functions.withdraw.sighash,
-        data: transactionData
-    })
-    .addLog([CAKE_POOL_ADDRESS], {
-        filter: [[
+/*    .addLog({
+        address: [CAKE_POOL_ADDRESS],
+        topic0: [
             cakePoolAbi.events.Withdraw.topic,
             cakePoolAbi.events.Harvest.topic
-        ]],
-        data: logData
+        ],
+    })*/
+    .addTransaction({
+        to: [CAKE_POOL_ADDRESS],
+        sighash: [
+            cakePoolAbi.functions.withdrawAll.sighash,
+            cakePoolAbi.functions.withdrawByAmount.sighash
+        ],
+        logs: true
     })
-    .addTransaction([CAKE_POOL_ADDRESS], {
-        sighash: cakePoolAbi.functions.withdrawAll.sighash,
-        data: transactionData
-    })
-    .addTransaction([CAKE_POOL_ADDRESS], {
-        sighash: cakePoolAbi.functions.withdrawByAmount.sighash,
-        data: transactionData
-    })
-/*    .addLog([], {
-        filter: [[
-            erc20Abi.events.Transfer.topic
-        ]],
-        data: logData
-    })
-    .addLog([...FACTORY_ADDRESSES], {
-        filter: [[factoryAbi.events.PairCreated.topic]],
-        data: logData
-    })
-*/
 
-interface Metadata {
-    height: number
-    pools: string[]
-}
-let factoryPools: Set<string>
 let db = new Database({
     tables: tables,
-    dest: new S3Dest(
+    dest: new LocalDest('/mirrorstorage/tst'),
+    /*new S3Dest(
         'pancake-deposits-and-withdrawals-light',
         assertNotNull(process.env.S3_BUCKET_NAME),
         {
@@ -138,179 +110,110 @@ let db = new Database({
                 secretAccessKey: assertNotNull(process.env.S3_SECRET_ACCESS_KEY)
             }
         }
-    ),
-    chunkSizeMb: 20,
-/*    hooks: {
-        async onConnect(dest) {
-            if (await dest.exists('status.json')) {
-                let {height, pools}: Metadata = await dest.readFile('status.json').then(JSON.parse)
-                assert(Number.isSafeInteger(height))
-                factoryPools = new Set<string>([...pools])
-                return height
-            } else {
-                factoryPools = new Set<string>()
-                return -1
-            }
-        },
-        async onFlush(dest, range) {
-            console.log(factoryPools.size)
-            let metadata: Metadata = {
-                height: range.to,
-                pools: [...factoryPools],
-            }
-            await dest.writeFile('status.json', JSON.stringify(metadata))
-        },
-    },*/
+    ),*/
+    chunkSizeMb: 20
 })
 
-type Item = BatchProcessorItem<typeof processor>
-type Ctx = BatchHandlerContext<Store<typeof tables>, Item>
-type DecodableLogItem = LogItem<typeof logData>
-type DecodableTransactionItem = TransactionItem<typeof transactionData>
+let compatDb = {
+    ...db,
+    supportsHotBlocks: false,
+    transactHot: false
+}
 
-let usedContracts = new Map<string, number>()
-let unusedContracts = new Map<string, number>()
+type Ctx = DataHandlerContext<Store<typeof tables>, typeof fieldSelection>
+type DecodableLog = Log<typeof fieldSelection>
+type DecodableTransaction = Transaction<typeof fieldSelection>
 
-processor.run(db, async (ctx) => {
+processor.run(compatDb, async (ctx) => {
+    let router_removeLiquidityWithPermit_transactions = new Set<string>()
+    let router_addLiquidity_transactions = new Set<string>()
+    let staking_deposit_transactions = new Set<string>()
+    let staking_withdraw_transactions = new Set<string>()
+    let cakePool_withdrawAll_transactions = new Set<string>()
+    let cakePool_withdrawAllByAmount_transactions = new Set<string>()
+
     for (let block of ctx.blocks) {
-        for (let item of block.items) {
-            if (item.kind==='transaction') {
-                if (item.transaction.to===ROUTER_V2_ADDRESS) {
-                    switch (getSighash(item)) {
-                        case routerAbi.functions.removeLiquidityWithPermit.sighash: {
-                            let txn = decodeTransactionSafely(ctx, block.header, item, decodeRouterRemoveLiquidityWithPermitTransaction)
-                            if (txn) { ctx.store.router_removeLiquidityWithPermit.write(txn) }
-                            break
-                        }
-                        case routerAbi.functions.addLiquidity.sighash: {
-                            let txn = decodeTransactionSafely(ctx, block.header, item, decodeRouterAddLiquidityTransaction)
-                            if (txn) { ctx.store.router_addLiquidity.write(txn) }
-                            break
-                        }
+        for (let txn of block.transactions) {
+            if (txn.to===ROUTER_V2_ADDRESS) {
+                switch (txn.sighash) {
+                    case routerAbi.functions.removeLiquidityWithPermit.sighash: {
+                        let decoded = decodeTransactionSafely(ctx, block.header, txn, decodeRouterRemoveLiquidityWithPermitTransaction)
+                        if (decoded) { ctx.store.router_removeLiquidityWithPermit.write(decoded) }
+                        break
                     }
-                }
-                if (item.transaction.to===MAIN_STAKING_V2_ADDRESS) {
-                    switch (getSighash(item)) {
-                        case stakingAbi.functions.deposit.sighash: {
-                            let txn = decodeTransactionSafely(ctx, block.header, item, decodeStakingDepositTransaction)
-                            if (txn) { ctx.store.staking_deposit.write(txn) }
-                            break
-                        }
-                        case stakingAbi.functions.withdraw.sighash: {
-                            let txn = decodeTransactionSafely(ctx, block.header, item, decodeStakingWithdrawTransaction)
-                            if (txn) { ctx.store.staking_withdraw.write(txn) }
-                            break
-                        }
-                    }
-                }
-                if (item.transaction.to===CAKE_POOL_ADDRESS) {
-                    switch (getSighash(item)) {
-                        case cakePoolAbi.functions.withdrawAll.sighash: {
-                            let txn = decodeTransactionSafely(ctx, block.header, item, decodeCakePoolWithdrawAllTransaction)
-                            if (txn) { ctx.store.cakePool_withdrawAll.write(txn) }
-                            break
-                        }
-                        case cakePoolAbi.functions.withdrawByAmount.sighash: {
-                            let txn = decodeTransactionSafely(ctx, block.header, item, decodeCakePoolWithdrawByAmountTransaction)
-                            if (txn) { ctx.store.cakePool_withdrawByAmount.write(txn) }
-                            break
-                        }
+                    case routerAbi.functions.addLiquidity.sighash: {
+                        let decoded = decodeTransactionSafely(ctx, block.header, txn, decodeRouterAddLiquidityTransaction)
+                        if (decoded) { ctx.store.router_addLiquidity.write(decoded) }
+                        break
                     }
                 }
             }
-            if (item.kind==='evmLog') {
-                if (item.evmLog.address===MAIN_STAKING_V2_ADDRESS) {
-                    switch (item.evmLog.topics[0]) {
-                        case stakingAbi.events.Deposit.topic: {
-                            let event = decodeEventSafely(ctx, block.header, item, decodeStakingDepositEvent)
-                            if (event) { ctx.store.staking_Deposit.write(event) }
-                            break
-                        }
-                        case stakingAbi.events.Withdraw.topic: {
-                            let event = decodeEventSafely(ctx, block.header, item, decodeStakingWithdrawEvent)
-                            if (event) { ctx.store.staking_Withdraw.write(event) }
-                            break
-                        }
+            if (txn.to===MAIN_STAKING_V2_ADDRESS) {
+                switch (txn.sighash) {
+                    case stakingAbi.functions.deposit.sighash: {
+                        let decoded = decodeTransactionSafely(ctx, block.header, txn, decodeStakingDepositTransaction)
+                        if (decoded) { ctx.store.staking_deposit.write(decoded) }
+                        break
+                    }
+                    case stakingAbi.functions.withdraw.sighash: {
+                        let decoded = decodeTransactionSafely(ctx, block.header, txn, decodeStakingWithdrawTransaction)
+                        if (decoded) { ctx.store.staking_withdraw.write(decoded) }
+                        break
                     }
                 }
-                if (item.evmLog.address===CAKE_POOL_ADDRESS) {
-                    switch (item.evmLog.topics[0]) {
-                        case cakePoolAbi.events.Withdraw.topic: {
-                            let event = decodeEventSafely(ctx, block.header, item, decodeCakePoolWithdrawEvent)
-                            if (event) { ctx.store.cakePool_Withdraw.write(event) }
-                            break
-                        }
-                        case cakePoolAbi.events.Harvest.topic: {
-                            let event = decodeEventSafely(ctx, block.header, item, decodeCakePoolHarvestEvent)
-                            if (event) { ctx.store.cakePool_Harvest.write(event) }
-                            break
-                        }
+            }
+            if (txn.to===CAKE_POOL_ADDRESS) {
+                switch (txn.sighash) {
+                    case cakePoolAbi.functions.withdrawAll.sighash: {
+                        let decoded = decodeTransactionSafely(ctx, block.header, txn, decodeCakePoolWithdrawAllTransaction)
+                        if (decoded) { ctx.store.cakePool_withdrawAll.write(decoded) }
+                        break
+                    }
+                    case cakePoolAbi.functions.withdrawByAmount.sighash: {
+                        let decoded = decodeTransactionSafely(ctx, block.header, txn, decodeCakePoolWithdrawByAmountTransaction)
+                        if (decoded) { ctx.store.cakePool_withdrawByAmount.write(decoded) }
+                        break
                     }
                 }
             }
         }
-    }
 
 /*
-    assert(factoryPools)
-
-    let poolCreationsData: PoolCreationData[] = []
-    let swapsData: SwapData[] = []
-
-    for (let block of ctx.blocks) {
-        for (let item of block.items) {
-            if (item.kind !== 'evmLog') continue
-
-            let itemAddr = item.address.toLowerCase()
-            if (FACTORY_ADDRESSES.has(itemAddr)) {
-                let pcd = handlePoolCreation(ctx, item)
-                factoryPools.add(pcd.address)
-                poolCreationsData.push(pcd)
-            } else if (factoryPools.has(itemAddr)) {
-                // do stuff with factory events
+        for (let log of block.logs) {
+            if (log.address===MAIN_STAKING_V2_ADDRESS) {
+                switch (log.topics[0]) {
+                    case stakingAbi.events.Deposit.topic: {
+                        let event = decodeEventSafely(ctx, block.header, log, decodeStakingDepositEvent)
+                        if (event) { ctx.store.staking_Deposit.write(event) }
+                        break
+                    }
+                    case stakingAbi.events.Withdraw.topic: {
+                        let event = decodeEventSafely(ctx, block.header, item, decodeStakingWithdrawEvent)
+                        if (event) { ctx.store.staking_Withdraw.write(event) }
+                        break
+                    }
+                }
+            }
+            if (item.evmLog.address===CAKE_POOL_ADDRESS) {
+                switch (item.evmLog.topics[0]) {
+                    case cakePoolAbi.events.Withdraw.topic: {
+                        let event = decodeEventSafely(ctx, block.header, item, decodeCakePoolWithdrawEvent)
+                        if (event) { ctx.store.cakePool_Withdraw.write(event) }
+                        break
+                    }
+                    case cakePoolAbi.events.Harvest.topic: {
+                        let event = decodeEventSafely(ctx, block.header, item, decodeCakePoolHarvestEvent)
+                        if (event) { ctx.store.cakePool_Harvest.write(event) }
+                        break
+                    }
+                }
             }
         }
-    }
 */
-
-/*{
-    router_removeLiquidityWithPermit,
-    router_addLiquidity,
-    staking_Deposit,
-    staking_Withdraw,
-    staking_deposit,
-    staking_withdraw
-    cakePool_Harvest,
-    cakePool_Withdraw,
-    cakePool_withdrawAll,
-    cakePool_withdrawByAmount,
-}*/
-
-//    ctx.store.Pools.writeMany(poolCreationsData)
+    }
 })
 
 /*
-interface PoolCreationData {
-    factory: string
-    address: string
-    token0: string
-    token1: string
-}
-
-function handlePoolCreation(
-    ctx: Ctx,
-    item: LogItem<{evmLog: {topics: true; data: true}}>
-): PoolCreationData {
-    let event = factoryAbi.events.PairCreated.decode(item.evmLog)
-    return {
-        factory: item.address.toLowerCase(),
-        address: event.pair.toLowerCase(),
-        token0: event.token0.toLowerCase(),
-        token1: event.token1.toLowerCase()
-    }
-}
-*/
-
 function decodeEventSafely<T>(ctx: Ctx, header: EvmBlock, item: DecodableLogItem, decoder: (header: EvmBlock, item: DecodableLogItem) => T): T | undefined {
     let out: T | undefined
     try {
@@ -323,9 +226,14 @@ function decodeEventSafely<T>(ctx: Ctx, header: EvmBlock, item: DecodableLogItem
         process.exit()
     }
     return out
-}
+}*/
 
-function decodeTransactionSafely<T>(ctx: Ctx, header: EvmBlock, item: DecodableTransactionItem, decoder: (header: EvmBlock, item: DecodableTransactionItem) => T): T | undefined {
+function decodeTransactionSafely<T>(
+    ctx: Ctx,
+    header: EvmBlock,
+    transaction: DecodableTransaction,
+    decoder: (header: EvmBlock, txn: DecodableTransaction) => T
+): T | undefined {
     let out: T | undefined
     try {
         out = decoder(header, item)
