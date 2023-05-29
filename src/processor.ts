@@ -24,7 +24,8 @@ import {
     CakePoolWithdrawEventData,
     CakePoolHarvestEventData,
     CakePoolWithdrawAllTransactionData,
-    CakePoolWithdrawByAmountTransactionData
+    CakePoolWithdrawByAmountTransactionData,
+    TransferEventData
 } from './tables'
 import * as routerAbi from './abi/router'
 import * as stakingAbi from './abi/staking'
@@ -50,7 +51,9 @@ const logData = {
         data: true
     },
     transaction: {
-        hash: true
+        hash: true,
+        input: true,
+        to: true
     }
 } as const
 
@@ -108,17 +111,12 @@ let processor = new EvmBatchProcessor()
         sighash: cakePoolAbi.functions.withdrawByAmount.sighash,
         data: transactionData
     })
-/*    .addLog([], {
+    .addLog([], {
         filter: [[
             erc20Abi.events.Transfer.topic
         ]],
         data: logData
     })
-    .addLog([...FACTORY_ADDRESSES], {
-        filter: [[factoryAbi.events.PairCreated.topic]],
-        data: logData
-    })
-*/
 
 interface Metadata {
     height: number
@@ -128,7 +126,7 @@ let factoryPools: Set<string>
 let db = new Database({
     tables: tables,
     dest: new S3Dest(
-        'pancake-deposits-and-withdrawals-light',
+        'pancake-deposits-and-withdrawals-full-v1',
         assertNotNull(process.env.S3_BUCKET_NAME),
         {
             region: 'us-east-1',
@@ -139,28 +137,7 @@ let db = new Database({
             }
         }
     ),
-    chunkSizeMb: 20,
-/*    hooks: {
-        async onConnect(dest) {
-            if (await dest.exists('status.json')) {
-                let {height, pools}: Metadata = await dest.readFile('status.json').then(JSON.parse)
-                assert(Number.isSafeInteger(height))
-                factoryPools = new Set<string>([...pools])
-                return height
-            } else {
-                factoryPools = new Set<string>()
-                return -1
-            }
-        },
-        async onFlush(dest, range) {
-            console.log(factoryPools.size)
-            let metadata: Metadata = {
-                height: range.to,
-                pools: [...factoryPools],
-            }
-            await dest.writeFile('status.json', JSON.stringify(metadata))
-        },
-    },*/
+    chunkSizeMb: 20
 })
 
 type Item = BatchProcessorItem<typeof processor>
@@ -247,69 +224,42 @@ processor.run(db, async (ctx) => {
                         }
                     }
                 }
+
+                if (item.evmLog.topics[0]===erc20Abi.events.Transfer.topic) {
+                    if (item.transaction.to===ROUTER_V2_ADDRESS) {
+                        switch (getSighash(item)) {
+                            case routerAbi.functions.removeLiquidityWithPermit.sighash: {
+                                let event = decodeEventSafely(ctx, block.header, item, decodeTransferEvent)
+                                if (event) { ctx.store.router_removeLiquidityWithPermit_Transfer.write(event) }
+                                break
+                            }
+                            case routerAbi.functions.addLiquidity.sighash: {
+                                let event = decodeEventSafely(ctx, block.header, item, decodeTransferEvent)
+                                if (event) { ctx.store.router_addLiquidity_Transfer.write(event) }
+                                break
+                            }
+                        }
+                    }
+                    if (item.transaction.to===MAIN_STAKING_V2_ADDRESS) {
+                        let event = decodeEventSafely(ctx, block.header, item, decodeTransferEvent)
+                        switch (getSighash(item)) {
+                            case stakingAbi.functions.withdraw.sighash: {
+                                let event = decodeEventSafely(ctx, block.header, item, decodeTransferEvent)
+                                if (event) { ctx.store.staking_withdraw_Transfer.write(event) }
+                                break
+                            }
+                            case stakingAbi.functions.deposit.sighash: {
+                                let event = decodeEventSafely(ctx, block.header, item, decodeTransferEvent)
+                                if (event) { ctx.store.staking_deposit_Transfer.write(event) }
+                                break
+                            }
+                        }
+                    }
+                }
             }
         }
     }
-
-/*
-    assert(factoryPools)
-
-    let poolCreationsData: PoolCreationData[] = []
-    let swapsData: SwapData[] = []
-
-    for (let block of ctx.blocks) {
-        for (let item of block.items) {
-            if (item.kind !== 'evmLog') continue
-
-            let itemAddr = item.address.toLowerCase()
-            if (FACTORY_ADDRESSES.has(itemAddr)) {
-                let pcd = handlePoolCreation(ctx, item)
-                factoryPools.add(pcd.address)
-                poolCreationsData.push(pcd)
-            } else if (factoryPools.has(itemAddr)) {
-                // do stuff with factory events
-            }
-        }
-    }
-*/
-
-/*{
-    router_removeLiquidityWithPermit,
-    router_addLiquidity,
-    staking_Deposit,
-    staking_Withdraw,
-    staking_deposit,
-    staking_withdraw
-    cakePool_Harvest,
-    cakePool_Withdraw,
-    cakePool_withdrawAll,
-    cakePool_withdrawByAmount,
-}*/
-
-//    ctx.store.Pools.writeMany(poolCreationsData)
 })
-
-/*
-interface PoolCreationData {
-    factory: string
-    address: string
-    token0: string
-    token1: string
-}
-
-function handlePoolCreation(
-    ctx: Ctx,
-    item: LogItem<{evmLog: {topics: true; data: true}}>
-): PoolCreationData {
-    let event = factoryAbi.events.PairCreated.decode(item.evmLog)
-    return {
-        factory: item.address.toLowerCase(),
-        address: event.pair.toLowerCase(),
-        token0: event.token0.toLowerCase(),
-        token1: event.token1.toLowerCase()
-    }
-}
-*/
 
 function decodeEventSafely<T>(ctx: Ctx, header: EvmBlock, item: DecodableLogItem, decoder: (header: EvmBlock, item: DecodableLogItem) => T): T | undefined {
     let out: T | undefined
@@ -320,7 +270,14 @@ function decodeEventSafely<T>(ctx: Ctx, header: EvmBlock, item: DecodableLogItem
         ctx.log.error({error, blockNumber: header.height, blockHash: header.hash, address: item.evmLog.address}, `Unable to decode event at ${decoder.name}`)
         ctx.log.error(`Offending item:`)
         ctx.log.error(item)
-        process.exit()
+        ctx.store.unparseableEvents.write({
+            topic0: item.evmLog.topics[0],
+            topic1: item.evmLog.topics[1],
+            topic2: item.evmLog.topics[2],
+            topic3: item.evmLog.topics[3],
+            data: item.evmLog.data,
+            ...decodeBaseEventData(header, item)
+        })
     }
     return out
 }
@@ -342,7 +299,9 @@ function decodeTransactionSafely<T>(ctx: Ctx, header: EvmBlock, item: DecodableT
     return out
 }
 
-function getSighash(item: DecodableTransactionItem): string {
+function getSighash(item: DecodableLogItem): string;
+function getSighash(item: DecodableTransactionItem): string;
+function getSighash(item: DecodableLogItem | DecodableTransactionItem): string {
     return item.transaction.input.slice(0, 10)
 }
 
@@ -488,6 +447,17 @@ function decodeCakePoolWithdrawByAmountTransaction(header: EvmBlock, item: Decod
     let txn = cakePoolAbi.functions.withdrawByAmount.decode(item.transaction.input)
     return {
         amount: normalizeAmount(txn._amount),
+        ...baseData
+    }
+}
+
+function decodeTransferEvent(header: EvmBlock, item: DecodableLogItem): TransferEventData {
+    let baseData = decodeBaseEventData(header, item)
+    let log = erc20Abi.events.Transfer.decode(item.evmLog)
+    return {
+        from: log.from,
+        to: log.to,
+        value: normalizeAmount(log.value),
         ...baseData
     }
 }

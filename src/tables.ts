@@ -243,11 +243,51 @@ const cakePool_withdrawByAmount = new Table(
     }
 )
 
+export interface TransferEventData extends BaseEventData {
+    from: string
+    to: string
+    value: AmountType
+}
+
+function transfersTableArgs() {
+    return [
+        {
+            from: Column(Types.String()),
+            to: Column(Types.String()),
+            value: amountColumn(),
+            ...commonEventFields()
+        },
+        {
+            compression: 'GZIP'
+        }
+    ] as const
+}
+
+const router_removeLiquidityWithPermit_Transfer = new Table('router.removeLiquidityWithPermit.Transfer.parquet', ...transfersTableArgs())
+const router_addLiquidity_Transfer = new Table('router.addLiquidity.Transfer.parquet', ...transfersTableArgs())
+const staking_withdraw_Transfer = new Table('staking.withdraw.Transfer.parquet', ...transfersTableArgs())
+const staking_deposit_Transfer = new Table('staking.deposit.Transfer.parquet', ...transfersTableArgs())
+
 const unparseableTransactions = new Table(
     'unparseableTransactions.parquet',
     {
         input: Column(Types.String()),
         ...commonTransactionFields()
+    },
+    {
+        compression: 'GZIP'
+    }
+)
+
+const unparseableEvents = new Table(
+    'unparseableEvents.parquet',
+    {
+        topic0: Column(Types.String(), {nullable: true}),
+        topic1: Column(Types.String(), {nullable: true}),
+        topic2: Column(Types.String(), {nullable: true}),
+        topic3: Column(Types.String(), {nullable: true}),
+        data: Column(Types.String()),
+        ...commonEventFields()
     },
     {
         compression: 'GZIP'
@@ -265,5 +305,10 @@ export const tables = {
     staking_Withdraw,
     staking_deposit,
     staking_withdraw,
-    unparseableTransactions
+    router_removeLiquidityWithPermit_Transfer,
+    router_addLiquidity_Transfer,
+    staking_withdraw_Transfer,
+    staking_deposit_Transfer,
+    unparseableTransactions,
+    unparseableEvents
 }
