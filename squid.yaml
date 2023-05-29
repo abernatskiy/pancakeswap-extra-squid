@@ -1,8 +1,8 @@
 manifestVersion: subsquid.io/v0.1
-name: pancakeswap-extra-swaps
+name: pancakeswap-extra-swaps-v1-full
 version: 1
 description: |-
-  Deposits and withdrawals data of Pancakeswap
+  Deposits and withdrawals data of Pancakeswap v1-full
 build:
 
 deploy:
