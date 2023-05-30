@@ -44,6 +44,8 @@ export interface BaseEventData {
     parentTransactionHash: string
 }
 
+/****************** TX STRUCTURES ******************/
+
 export interface RouterRemoveLiquidityWithPermitTransactionData extends BaseTransactionData {
     tokenA: string
     tokenB: string
@@ -108,44 +110,6 @@ const router_addLiquidity = new Table(
     }
 )
 
-export interface StakingDepositEventData extends BaseEventData {
-    user: string
-    pid: number
-    amount: AmountType
-}
-
-const staking_Deposit = new Table(
-    'staking.Deposit.parquet',
-    {
-        user: Column(Types.String()),
-        pid: Column(Types.Uint32()),
-        amount: amountColumn(),
-        ...commonEventFields()
-    },
-    {
-	    compression: 'GZIP'
-    }
-)
-
-export interface StakingWithdrawEventData extends BaseEventData {
-    user: string
-    pid: number
-    amount: AmountType
-}
-
-const staking_Withdraw = new Table(
-    'staking.Withdraw.parquet',
-    {
-        user: Column(Types.String()),
-        pid: Column(Types.Uint32()),
-        amount: amountColumn(),
-        ...commonEventFields()
-    },
-    {
-	    compression: 'GZIP'
-    }
-)
-
 export interface StakingDepositTransactionData extends BaseTransactionData {
     pid: number
     amount: AmountType
@@ -174,42 +138,6 @@ const staking_withdraw = new Table(
         pid: Column(Types.Uint32()),
         amount: amountColumn(),
         ...commonTransactionFields()
-    },
-    {
-	    compression: 'GZIP'
-    }
-)
-
-export interface CakePoolWithdrawEventData extends BaseEventData {
-    sender: string
-    amount: AmountType
-    shares: AmountType
-}
-
-const cakePool_Withdraw = new Table(
-    'cakePool.Withdraw.parquet',
-    {
-        sender: Column(Types.String()),
-        amount: amountColumn(),
-        shares: amountColumn(),
-        ...commonEventFields()
-    },
-    {
-	    compression: 'GZIP'
-    }
-)
-
-export interface CakePoolHarvestEventData extends BaseEventData {
-    sender: string
-    amount: AmountType
-}
-
-const cakePool_Harvest = new Table(
-    'cakePool.Harvest.parquet',
-    {
-        sender: Column(Types.String()),
-        amount: amountColumn(),
-        ...commonEventFields()
     },
     {
 	    compression: 'GZIP'
@@ -254,16 +182,196 @@ const unparseableTransactions = new Table(
     }
 )
 
+/****************** EVENT STRUCTURES ******************/
+
+export interface BurnEventData extends BaseEventData {
+    sender: string
+    amount0: AmountType
+    amount1: AmountType
+    to: string
+}
+
+const router_removeLiquidityWithPermit_Burn = new Table(
+    'router.Burn.parquet',
+    {
+        sender: Column(Types.String()),
+        amount0: amountColumn(),
+        amount1: amountColumn(),
+        to: Column(Types.String()),
+        ...commonEventFields()
+    },
+    {
+	    compression: 'GZIP'
+    }
+)
+
+export interface MintEventData extends BaseEventData {
+    sender: string
+    amount0: AmountType
+    amount1: AmountType
+}
+
+const router_addLiquidity_Mint = new Table(
+    'router.Mint.parquet',
+    {
+        sender: Column(Types.String()),
+        amount0: amountColumn(),
+        amount1: amountColumn(),
+        ...commonEventFields()
+    },
+    {
+	    compression: 'GZIP'
+    }
+)
+
+export interface DepositEventData extends BaseEventData {
+    user: string
+    pid: number
+    amount: AmountType
+}
+
+const staking_deposit_Deposit = new Table(
+    'staking.Deposit.parquet',
+    {
+        user: Column(Types.String()),
+        pid: Column(Types.Uint32()),
+        amount: amountColumn(),
+        ...commonEventFields()
+    },
+    {
+	    compression: 'GZIP'
+    }
+)
+
+export interface WithdrawEventData extends BaseEventData {
+    user: string
+    pid: number
+    amount: AmountType
+}
+
+function withdrawTableArgs() {
+    return [
+        {
+            user: Column(Types.String()),
+            pid: Column(Types.Uint32()),
+            amount: amountColumn(),
+            ...commonEventFields()
+        },
+        {
+	        compression: 'GZIP'
+        }
+    ] as const
+}
+
+const staking_withdraw_Withdraw = new Table('staking.Withdraw.parquet', ...withdrawTableArgs())
+const cakePool_withdrawAll_staking_Withdraw = new Table('staking.withdrawAll_Withdraw.fromStaking.parquet', ...withdrawTableArgs())
+const cakePool_withdrawByAmount_staking_Withdraw = new Table('staking.withdrawByAmount_Withdraw.fromStaking.parquet', ...withdrawTableArgs())
+
+export interface CakePoolWithdrawEventData extends BaseEventData {
+    sender: string
+    amount: AmountType
+    shares: AmountType
+}
+
+function cakePoolWithdrawTableArgs() {
+    return [
+        {
+            sender: Column(Types.String()),
+            amount: amountColumn(),
+            shares: amountColumn(),
+            ...commonEventFields()
+        },
+        {
+	        compression: 'GZIP'
+        }
+    ] as const
+}
+
+const cakePool_withdrawAll_cakePool_Withdraw = new Table('cakePool.withdrawAll_Withdraw.fromCakePool.parquet', ...cakePoolWithdrawTableArgs())
+const cakePool_withdrawByAmount_cakePool_Withdraw = new Table('cakePool.withdrawByAmount_Withdraw.fromCakePool.parquet', ...cakePoolWithdrawTableArgs())
+
+export interface HarvestEventData extends BaseEventData {
+    sender: string
+    amount: AmountType
+}
+
+function harvestTableArgs() {
+    return [
+        {
+            sender: Column(Types.String()),
+            amount: amountColumn(),
+            ...commonEventFields()
+        },
+        {
+	        compression: 'GZIP'
+        }
+    ] as const
+}
+
+const cakePool_withdrawAll_Harvest = new Table('cakePool.withdrawAll_Harvest.parquet', ...harvestTableArgs())
+const cakePool_withdrawByAmount_Harvest = new Table('cakePool.withdrawByAmount_Harvest.parquet', ...harvestTableArgs())
+
+export interface TransferEventData extends BaseEventData {
+    from: string
+    to: string
+    value: AmountType
+}
+
+function transfersTableArgs() {
+    return [
+        {
+            from: Column(Types.String()),
+            to: Column(Types.String()),
+            value: amountColumn(),
+            ...commonEventFields()
+        },
+        {
+    	    compression: 'GZIP'
+        }
+    ] as const
+}
+
+const router_removeLiquidityWithPermit_Transfer = new Table('router.removeLiquidityWithPermit_Transfer.parquet', ...transfersTableArgs())
+const router_addLiquidity_Transfer = new Table('router.addLiquidity_Transfer.parquet', ...transfersTableArgs())
+const staking_deposit_Transfer = new Table('staking.deposit_Transfer.parquet', ...transfersTableArgs())
+const staking_withdraw_Transfer = new Table('staking.withdraw_Transfer.parquet', ...transfersTableArgs())
+
+const unparseableEvents = new Table(
+    'unparseableEvents.parquet',
+    {
+        topic0: Column(Types.String(), {nullable: true}),
+        topic1: Column(Types.String(), {nullable: true}),
+        topic2: Column(Types.String(), {nullable: true}),
+        topic3: Column(Types.String(), {nullable: true}),
+        data: Column(Types.String()),
+        ...commonEventFields()
+    },
+    {
+        compression: 'GZIP'
+    }
+)
+
 export const tables = {
-    cakePool_Harvest,
-    cakePool_Withdraw,
     cakePool_withdrawAll,
     cakePool_withdrawByAmount,
     router_addLiquidity,
     router_removeLiquidityWithPermit,
-    staking_Deposit,
-    staking_Withdraw,
     staking_deposit,
     staking_withdraw,
-    unparseableTransactions
+    unparseableTransactions,
+    router_removeLiquidityWithPermit_Burn,
+    router_removeLiquidityWithPermit_Transfer,
+    router_addLiquidity_Mint,
+    router_addLiquidity_Transfer,
+    staking_deposit_Deposit,
+    staking_deposit_Transfer,
+    staking_withdraw_Withdraw,
+    staking_withdraw_Transfer,
+    cakePool_withdrawAll_staking_Withdraw,
+    cakePool_withdrawAll_cakePool_Withdraw,
+    cakePool_withdrawAll_Harvest,
+    cakePool_withdrawByAmount_staking_Withdraw,
+    cakePool_withdrawByAmount_cakePool_Withdraw,
+    cakePool_withdrawByAmount_Harvest,
+    unparseableEvents
 }
