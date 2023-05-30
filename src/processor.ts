@@ -131,44 +131,32 @@ processor.run(db, async (ctx) => {
         for (let txn of block.transactions) {
             if (txn.to===ROUTER_V2_ADDRESS) {
                 switch (txn.sighash) {
-                    case routerAbi.functions.removeLiquidityWithPermit.sighash: {
-                        let decoded = decodeTransactionSafely(ctx, block.header, txn, decodeRouterRemoveLiquidityWithPermitTransaction)
-                        if (decoded) { ctx.store.router_removeLiquidityWithPermit.write(decoded) }
+                    case routerAbi.functions.removeLiquidityWithPermit.sighash:
+                        handleTransaction(ctx, block.header, txn, decodeRouterRemoveLiquidityWithPermitTransaction, ctx.store.router_removeLiquidityWithPermit, router_removeLiquidityWithPermit_transactions)
                         break
-                    }
-                    case routerAbi.functions.addLiquidity.sighash: {
-                        let decoded = decodeTransactionSafely(ctx, block.header, txn, decodeRouterAddLiquidityTransaction)
-                        if (decoded) { ctx.store.router_addLiquidity.write(decoded) }
+                    case routerAbi.functions.addLiquidity.sighash:
+                        handleTransaction(ctx, block.header, txn, decodeRouterAddLiquidityTransaction, ctx.store.router_addLiquidity, router_addLiquidity_transactions)
                         break
-                    }
                 }
             }
             if (txn.to===MAIN_STAKING_V2_ADDRESS) {
                 switch (txn.sighash) {
-                    case stakingAbi.functions.deposit.sighash: {
-                        let decoded = decodeTransactionSafely(ctx, block.header, txn, decodeStakingDepositTransaction)
-                        if (decoded) { ctx.store.staking_deposit.write(decoded) }
+                    case stakingAbi.functions.deposit.sighash:
+                        handleTransaction(ctx, block.header, txn, decodeStakingDepositTransaction, ctx.store.staking_deposit, staking_deposit_transactions)
                         break
-                    }
-                    case stakingAbi.functions.withdraw.sighash: {
-                        let decoded = decodeTransactionSafely(ctx, block.header, txn, decodeStakingWithdrawTransaction)
-                        if (decoded) { ctx.store.staking_withdraw.write(decoded) }
+                    case stakingAbi.functions.withdraw.sighash:
+                        handleTransaction(ctx, block.header, txn, decodeStakingWithdrawTransaction, ctx.store.staking_withdraw, staking_withdraw_transactions)
                         break
-                    }
                 }
             }
             if (txn.to===CAKE_POOL_ADDRESS) {
                 switch (txn.sighash) {
-                    case cakePoolAbi.functions.withdrawAll.sighash: {
-                        let decoded = decodeTransactionSafely(ctx, block.header, txn, decodeCakePoolWithdrawAllTransaction)
-                        if (decoded) { ctx.store.cakePool_withdrawAll.write(decoded) }
+                    case cakePoolAbi.functions.withdrawAll.sighash:
+                        handleTransaction(ctx, block.header, txn, decodeCakePoolWithdrawAllTransaction, ctx.store.cakePool_withdrawAll, cakePool_withdrawAll_transactions)
                         break
-                    }
-                    case cakePoolAbi.functions.withdrawByAmount.sighash: {
-                        let decoded = decodeTransactionSafely(ctx, block.header, txn, decodeCakePoolWithdrawByAmountTransaction)
-                        if (decoded) { ctx.store.cakePool_withdrawByAmount.write(decoded) }
+                    case cakePoolAbi.functions.withdrawByAmount.sighash:
+                        handleTransaction(ctx, block.header, txn, decodeCakePoolWithdrawByAmountTransaction, ctx.store.cakePool_withdrawByAmount, cakePool_withdrawAllByAmount_transactions)
                         break
-                    }
                 }
             }
         }
@@ -222,6 +210,22 @@ function decodeEventSafely<T>(ctx: Ctx, header: EvmBlock, item: DecodableLogItem
     }
     return out
 }*/
+
+function handleTransaction<D, T extends {write: (dt: D) => void}>(
+    ctx: Ctx,
+    header: DecodableBlockHeader,
+    transaction: DecodableTransaction,
+    decoder: (header: DecodableBlockHeader, txn: DecodableTransaction) => D,
+    targetTable: T,
+    txIndex: Set<string>
+): void {
+    let decodedTx = decodeTransactionSafely(ctx, header, transaction, decoder)
+    if (decodedTx) {
+        targetTable.write(decodedTx)
+    }
+    txIndex.add(transaction.hash)
+}
+
 
 function decodeTransactionSafely<T>(
     ctx: Ctx,
