@@ -2,11 +2,11 @@ import {
     DataHandlerContext,
     EvmBatchProcessor,
     BlockData,
+    BlockHeader,
     Log,
     Transaction
 } from '@subsquid/evm-processor'
 import {lookupArchive} from '@subsquid/archive-registry'
-//import {LogItem, TransactionItem} from '@subsquid/evm-processor/lib/interfaces/dataSelection'
 import {Store, Database} from '@subsquid/file-store'
 import {S3Dest} from '@subsquid/file-store-s3'
 import {assertNotNull} from '@subsquid/util-internal'
@@ -114,17 +114,12 @@ let db = new Database({
     chunkSizeMb: 20
 })
 
-let compatDb = {
-    ...db,
-    supportsHotBlocks: false,
-    transactHot: false
-}
-
 type Ctx = DataHandlerContext<Store<typeof tables>, typeof fieldSelection>
 type DecodableLog = Log<typeof fieldSelection>
 type DecodableTransaction = Transaction<typeof fieldSelection>
+type DecodableBlockHeader = BlockHeader<typeof fieldSelection>
 
-processor.run(compatDb, async (ctx) => {
+processor.run(db, async (ctx) => {
     let router_removeLiquidityWithPermit_transactions = new Set<string>()
     let router_addLiquidity_transactions = new Set<string>()
     let staking_deposit_transactions = new Set<string>()
@@ -230,51 +225,51 @@ function decodeEventSafely<T>(ctx: Ctx, header: EvmBlock, item: DecodableLogItem
 
 function decodeTransactionSafely<T>(
     ctx: Ctx,
-    header: EvmBlock,
+    header: DecodableBlockHeader,
     transaction: DecodableTransaction,
-    decoder: (header: EvmBlock, txn: DecodableTransaction) => T
+    decoder: (header: DecodableBlockHeader, txn: DecodableTransaction) => T
 ): T | undefined {
     let out: T | undefined
     try {
-        out = decoder(header, item)
+        out = decoder(header, transaction)
     }
     catch (error) {
-        ctx.log.error({error, blockNumber: header.height, blockHash: header.hash, address: item.transaction.to}, `Unable to decode function at ${decoder.name}`)
+        ctx.log.error({error, blockNumber: header.height, blockHash: header.hash, address: transaction.to}, `Unable to decode function at ${decoder.name}`)
         ctx.log.error(`Offending item:`)
-        ctx.log.error(item)
+        ctx.log.error(transaction)
         ctx.store.unparseableTransactions.write({
-            input: item.transaction.input,
-            ...decodeBaseTransactionData(header, item)
+            input: transaction.input,
+            ...decodeBaseTransactionData(header, transaction)
         })
     }
     return out
 }
 
-function getSighash(item: DecodableTransactionItem): string {
-    return item.transaction.input.slice(0, 10)
+function getSighash(txn: DecodableTransaction): string {
+    return txn.input.slice(0, 10)
 }
 
-function decodeBlockHeader(header: EvmBlock) {
+function decodeBlockHeader(header: DecodableBlockHeader) {
     return {
         block: header.height,
         timestamp: new Date(header.timestamp)
     }
 }
 
-function decodeBaseTransactionData(header: EvmBlock, item: DecodableTransactionItem): BaseTransactionData {
+function decodeBaseTransactionData(header: DecodableBlockHeader, txn: DecodableTransaction): BaseTransactionData {
     return {
         ...decodeBlockHeader(header),
-        hash: item.transaction.hash,
-        txFrom: normalizeAddress(item.transaction.from!),
-        txTo: normalizeAddress(item.transaction.to!)
+        hash: txn.hash,
+        txFrom: normalizeAddress(txn.from!),
+        txTo: normalizeAddress(txn.to!)
     }
 }
 
-function decodeBaseEventData(header: EvmBlock, item: DecodableLogItem): BaseEventData {
+function decodeBaseEventData(header: DecodableBlockHeader, log: DecodableLog): BaseEventData {
     return {
         ...decodeBlockHeader(header),
-        eventAddress: normalizeAddress(item.evmLog.address),
-        parentTransactionHash: item.transaction.hash
+        eventAddress: normalizeAddress(log.address),
+        parentTransactionHash: log.transactionHash
     }
 }
 
@@ -286,9 +281,9 @@ function normalizeAmount(amt: ethers.BigNumber) {
     return amt.toString()
 }
 
-function decodeRouterRemoveLiquidityWithPermitTransaction(header: EvmBlock, item: DecodableTransactionItem): RouterRemoveLiquidityWithPermitTransactionData {
-    let baseData = decodeBaseTransactionData(header, item)
-    let txn = routerAbi.functions.removeLiquidityWithPermit.decode(item.transaction.input)
+function decodeRouterRemoveLiquidityWithPermitTransaction(header: DecodableBlockHeader, transaction: DecodableTransaction): RouterRemoveLiquidityWithPermitTransactionData {
+    let baseData = decodeBaseTransactionData(header, transaction)
+    let txn = routerAbi.functions.removeLiquidityWithPermit.decode(transaction.input)
     return {
         tokenA: normalizeAddress(txn.tokenA),
         tokenB: normalizeAddress(txn.tokenB),
@@ -305,9 +300,9 @@ function decodeRouterRemoveLiquidityWithPermitTransaction(header: EvmBlock, item
     }
 }
 
-function decodeRouterAddLiquidityTransaction(header: EvmBlock, item: DecodableTransactionItem): RouterAddLiquidityTransactionData {
-    let baseData = decodeBaseTransactionData(header, item)
-    let txn = routerAbi.functions.addLiquidity.decode(item.transaction.input)
+function decodeRouterAddLiquidityTransaction(header: DecodableBlockHeader, transaction: DecodableTransaction): RouterAddLiquidityTransactionData {
+    let baseData = decodeBaseTransactionData(header, transaction)
+    let txn = routerAbi.functions.addLiquidity.decode(transaction.input)
     return {
         tokenA: normalizeAddress(txn.tokenA),
         tokenB: normalizeAddress(txn.tokenB),
@@ -320,7 +315,7 @@ function decodeRouterAddLiquidityTransaction(header: EvmBlock, item: DecodableTr
         ...baseData
     }
 }
-
+/*
 function decodeStakingDepositEvent(header: EvmBlock, item: DecodableLogItem): StakingDepositEventData {
     let baseData = decodeBaseEventData(header, item)
     let log = stakingAbi.events.Deposit.decode(item.evmLog)
@@ -342,10 +337,10 @@ function decodeStakingWithdrawEvent(header: EvmBlock, item: DecodableLogItem): S
         ...baseData
     }
 }
-
-function decodeStakingDepositTransaction(header: EvmBlock, item: DecodableTransactionItem): StakingDepositTransactionData {
-    let baseData = decodeBaseTransactionData(header, item)
-    let txn = stakingAbi.functions.deposit.decode(item.transaction.input)
+*/
+function decodeStakingDepositTransaction(header: DecodableBlockHeader, transaction: DecodableTransaction): StakingDepositTransactionData {
+    let baseData = decodeBaseTransactionData(header, transaction)
+    let txn = stakingAbi.functions.deposit.decode(transaction.input)
     return {
         pid: txn._pid.toNumber(),
         amount: normalizeAmount(txn._amount),
@@ -353,17 +348,17 @@ function decodeStakingDepositTransaction(header: EvmBlock, item: DecodableTransa
     }
 }
 
-function decodeStakingWithdrawTransaction(header: EvmBlock, item: DecodableTransactionItem): StakingWithdrawTransactionData {
-    let baseData = decodeBaseTransactionData(header, item)
-    let txn = stakingAbi.functions.withdraw.decode(item.transaction.input)
+function decodeStakingWithdrawTransaction(header: DecodableBlockHeader, transaction: DecodableTransaction): StakingWithdrawTransactionData {
+    let baseData = decodeBaseTransactionData(header, transaction)
+    let txn = stakingAbi.functions.withdraw.decode(transaction.input)
     return {
         pid: txn._pid.toNumber(),
         amount: normalizeAmount(txn._amount),
         ...baseData
     }
 }
-
-function decodeCakePoolWithdrawEvent(header: EvmBlock, item: DecodableLogItem): CakePoolWithdrawEventData {
+/*
+function decodeCakePoolWithdrawEvent(header: ): CakePoolWithdrawEventData { /////// !!
     let baseData = decodeBaseEventData(header, item)
     let log = cakePoolAbi.events.Withdraw.decode(item.evmLog)
     return {
@@ -383,17 +378,17 @@ function decodeCakePoolHarvestEvent(header: EvmBlock, item: DecodableLogItem): C
         ...baseData
     }
 }
-
-function decodeCakePoolWithdrawAllTransaction(header: EvmBlock, item: DecodableTransactionItem): CakePoolWithdrawAllTransactionData {
-    let baseData = decodeBaseTransactionData(header, item)
+*/
+function decodeCakePoolWithdrawAllTransaction(header: DecodableBlockHeader, transaction: DecodableTransaction): CakePoolWithdrawAllTransactionData {
+    let baseData = decodeBaseTransactionData(header, transaction)
     return {
         ...baseData
     }
 }
 
-function decodeCakePoolWithdrawByAmountTransaction(header: EvmBlock, item: DecodableTransactionItem): CakePoolWithdrawByAmountTransactionData {
-    let baseData = decodeBaseTransactionData(header, item)
-    let txn = cakePoolAbi.functions.withdrawByAmount.decode(item.transaction.input)
+function decodeCakePoolWithdrawByAmountTransaction(header: DecodableBlockHeader, transaction: DecodableTransaction): CakePoolWithdrawByAmountTransactionData {
+    let baseData = decodeBaseTransactionData(header, transaction)
+    let txn = cakePoolAbi.functions.withdrawByAmount.decode(transaction.input)
     return {
         amount: normalizeAmount(txn._amount),
         ...baseData
