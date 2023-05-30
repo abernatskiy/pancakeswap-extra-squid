@@ -10,8 +10,9 @@
     "@subsquid/archive-registry": "^2.1.8",
     "@subsquid/evm-processor": "^1.0.1",
     "@subsquid/evm-typegen": "^2.1.1",
-    "@subsquid/file-store-parquet": "^0.3.0",
-    "@subsquid/file-store-s3": "^0.2.0",
+    "@subsquid/file-store": "^1.0.0",
+    "@subsquid/file-store-parquet": "^1.0.0",
+    "@subsquid/file-store-s3": "^1.0.0",
     "@subsquid/typeorm-store": "^1.0.0",
     "dotenv": "^16.0.3",
     "ethers": "^5.7.2"
