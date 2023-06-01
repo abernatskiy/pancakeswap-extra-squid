@@ -57,7 +57,7 @@ let processor = new EvmBatchProcessor()
     .setFields(fieldSelection)
     .setDataSource({
         archive: 'https://v2.archive.subsquid.io/network/binance-mainnet',
-        chain: process.env.RPC_BSC_HTTP
+        chain: assertNotNull(process.env.RPC_BSC_HTTP)
     })
     .setBlockRange({
         from: 25_500_000,
