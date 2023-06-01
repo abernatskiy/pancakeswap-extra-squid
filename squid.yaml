@@ -1,5 +1,5 @@
 manifestVersion: subsquid.io/v0.1
-name: pancakeswap-extra-swaps
+name: pancakeswap-extra-swaps-v2f
 version: 1
 description: |-
   Deposits and withdrawals data of Pancakeswap
@@ -14,3 +14,11 @@ deploy:
     cmd: [ "node", "lib/processor" ]
   api:
     cmd: [ "sleep", "3600" ]
+  addons:
+    rpc:
+      - bsc:http
+
+scale:
+  addons:
+    rpc:
+      max-rate: 10rps

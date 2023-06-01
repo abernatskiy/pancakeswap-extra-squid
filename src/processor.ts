@@ -56,7 +56,8 @@ let fieldSelection = {
 let processor = new EvmBatchProcessor()
     .setFields(fieldSelection)
     .setDataSource({
-        archive: lookupArchive('binance')
+        archive: 'https://v2.archive.subsquid.io/network/binance-mainnet',
+        chain: process.env.RPC_BSC_HTTP
     })
     .setBlockRange({
         from: 25_500_000,
@@ -69,13 +70,6 @@ let processor = new EvmBatchProcessor()
         ],
         logs: true
     })
-/*    .addLog({ // I don't think I need this with logs: true in addTransaction below
-        address: [MAIN_STAKING_V2_ADDRESS],
-        topic0: [
-            stakingAbi.events.Deposit.topic,
-            stakingAbi.events.Withdraw.topic
-        ]
-    })*/
     .addTransaction({
         to: [MAIN_STAKING_V2_ADDRESS],
         sighash: [
@@ -84,13 +78,6 @@ let processor = new EvmBatchProcessor()
         ],
         logs: true
     })
-/*    .addLog({
-        address: [CAKE_POOL_ADDRESS],
-        topic0: [
-            cakePoolAbi.events.Withdraw.topic,
-            cakePoolAbi.events.Harvest.topic
-        ],
-    })*/
     .addTransaction({
         to: [CAKE_POOL_ADDRESS],
         sighash: [
@@ -102,9 +89,8 @@ let processor = new EvmBatchProcessor()
 
 let db = new Database({
     tables: tables,
-    dest: new LocalDest('/mirrorstorage/tst'),
-    /*new S3Dest(
-        'pancake-deposits-and-withdrawals-light',
+    dest: new S3Dest(
+        'pancake-deposits-and-withdrawals-full-v2',
         assertNotNull(process.env.S3_BUCKET_NAME),
         {
             region: 'us-east-1',
@@ -114,7 +100,7 @@ let db = new Database({
                 secretAccessKey: assertNotNull(process.env.S3_SECRET_ACCESS_KEY)
             }
         }
-    ),*/
+    ),
     chunkSizeMb: 20
 })
 
