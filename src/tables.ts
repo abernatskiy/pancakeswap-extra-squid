@@ -264,8 +264,8 @@ function withdrawTableArgs() {
 }
 
 const staking_withdraw_Withdraw = new Table('staking.Withdraw.parquet', ...withdrawTableArgs())
-const cakePool_withdrawAll_staking_Withdraw = new Table('staking.withdrawAll_Withdraw.fromStaking.parquet', ...withdrawTableArgs())
-const cakePool_withdrawByAmount_staking_Withdraw = new Table('staking.withdrawByAmount_Withdraw.fromStaking.parquet', ...withdrawTableArgs())
+const cakePool_withdrawAll_staking_Withdraw = new Table('cakePool.withdrawAll_Withdraw.fromStaking.parquet', ...withdrawTableArgs())
+const cakePool_withdrawByAmount_staking_Withdraw = new Table('cakePool.withdrawByAmount_Withdraw.fromStaking.parquet', ...withdrawTableArgs())
 
 export interface CakePoolWithdrawEventData extends BaseEventData {
     sender: string
